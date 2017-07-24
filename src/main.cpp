@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+#include "helper.hpp"
 
 using namespace std;
 
@@ -18,6 +19,9 @@ using json = nlohmann::json;
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
+
+const double goal_speed = 20.0; // 20 m/s = 44.75 mph
+const double lane_width = 4.0; // 4 m lane
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -38,6 +42,14 @@ double distance(double x1, double y1, double x2, double y2)
 {
 	return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }
+
+/**
+ * @param x vehicle position
+ * @param y vehicle position
+ * @param maps_x waypoint positions
+ * @param maps_y waypoint positions
+ * @return index closest waypoint
+ */
 int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> maps_y)
 {
 
@@ -48,7 +60,7 @@ int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> ma
 	{
 		double map_x = maps_x[i];
 		double map_y = maps_y[i];
-		double dist = distance(x,y,map_x,map_y);
+		double dist = distance(x, y, map_x, map_y);
 		if(dist < closestLen)
 		{
 			closestLen = dist;
@@ -214,39 +226,71 @@ int main() {
         
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          
-        	// Main car's localization Data
-          	double car_x = j[1]["x"];
-          	double car_y = j[1]["y"];
-          	double car_s = j[1]["s"];
-          	double car_d = j[1]["d"];
-          	double car_yaw = j[1]["yaw"];
-          	double car_speed = j[1]["speed"];
 
-          	// Previous path data given to the Planner
-          	auto previous_path_x = j[1]["previous_path_x"];
-          	auto previous_path_y = j[1]["previous_path_y"];
-          	// Previous path's end s and d values 
-          	double end_path_s = j[1]["end_path_s"];
-          	double end_path_d = j[1]["end_path_d"];
+          // Ego vehicle localization data (global coordinates)
+          double car_x = j[1]["x"];
+          double car_y = j[1]["y"];
+          double car_s = j[1]["s"];
+          double car_d = j[1]["d"];
+          double car_yaw = j[1]["yaw"];
+          double car_speed = j[1]["speed"];
 
-          	// Sensor Fusion Data, a list of all other cars on the same side of the road.
-          	auto sensor_fusion = j[1]["sensor_fusion"];
+          // Previous path data given to the Planner
+          auto previous_path_x = j[1]["previous_path_x"];
+          auto previous_path_y = j[1]["previous_path_y"];
 
-          	json msgJson;
+          // Previous path's end s and d values
+          double end_path_s = j[1]["end_path_s"];
+          double end_path_d = j[1]["end_path_d"];
 
-          	vector<double> next_x_vals;
-          	vector<double> next_y_vals;
+          // Sensor Fusion Data, a list of all other cars on the same side of the road.
+          auto sensor_fusion = j[1]["sensor_fusion"];
 
+          json msgJson;
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-          	msgJson["next_x"] = next_x_vals;
-          	msgJson["next_y"] = next_y_vals;
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
 
-          	auto msg = "42[\"control\","+ msgJson.dump()+"]";
+          // Find the next waypoints in global (x, y)
+          int index_closest_waypoint = ClosestWaypoint(car_x, car_y, map_waypoints_x, map_waypoints_y);
 
-          	//this_thread::sleep_for(chrono::milliseconds(1000));
-          	ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+          // Convert waypoints to Frenet (s, d)
+          // Decide (s, d) positions for car
+          // Convert (s, d) to (x, y)
+          // Feed waypoints (and intermediates) (x, y) to car
+
+          const size_t nb_steps = 30;
+          const double step_length = 0.4; // 0.4 m per 0.02 s -> 20 m/s
+          const size_t lane = 0;
+
+          for (size_t i = 0; i < nb_steps; i++) {
+            double s_position = car_s + step_length * i;
+            double d_position = lane + lane_width / 2;
+            vector<double> x_y_position = getXY(s_position, d_position, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            next_x_vals.push_back(x_y_position[0]);
+            next_y_vals.push_back(x_y_position[1]);
+          }
+
+          double distance = 10; // 10 meter horizon
+          double time = distance / goal_speed;
+          double car_acc = 0;
+          double goal_s = car_s + distance;
+          double goal_speed = goal_speed;
+          double goal_acc = 0;
+          vector<double> start = {car_s, car_speed, car_acc};
+          vector<double> goal = {goal_s, goal_speed, goal_acc};
+
+          // TODO: Jerk minimize trajectory solver in XY coords
+          Eigen::VectorXd s_alpha = jerk_minimize_trajectory(start, goal, time);
+
+          // TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+          msgJson["next_x"] = next_x_vals;
+          msgJson["next_y"] = next_y_vals;
+
+          auto msg = "42[\"control\","+ msgJson.dump()+"]";
+
+          //this_thread::sleep_for(chrono::milliseconds(1000));
+          ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
           
         }
       } else {
