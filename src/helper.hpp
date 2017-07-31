@@ -12,4 +12,6 @@
 
 using namespace std;
 
-Eigen::VectorXd jerk_minimize_trajectory(vector<double> start, vector<double> goal, double time);
+Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal, double time);
+
+double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value);

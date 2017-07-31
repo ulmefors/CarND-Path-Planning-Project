@@ -1,6 +1,6 @@
 #include "helper.hpp"
 
-Eigen::VectorXd jerk_minimize_trajectory(vector<double> start, vector<double> goal, double time) {
+Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal, double time) {
 
   double alpha_0 = start[0];
   double alpha_1 = start[1];
@@ -26,4 +26,10 @@ Eigen::VectorXd jerk_minimize_trajectory(vector<double> start, vector<double> go
   return alpha;
 }
 
-
+double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value) {
+  double sum = 0;
+  for (size_t i = 0; i < coeffs.size(); i++) {
+    sum += coeffs[i] * pow(value, i);
+  }
+  return sum;
+}
