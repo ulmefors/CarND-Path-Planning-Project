@@ -231,7 +231,7 @@ int main() {
           // Constants
           const double target_speed = 20; // 10 m/s = 22.37 mph
           const double timestep = 0.02; // 0.02 second update
-          const double lane_width = 4.0; // 4 m lane
+          const int lane_width = 4; // 4 m lane
           const double limit_mean_acc = 1.0;
 
           // Ego vehicle localization data (global coordinates)
@@ -245,6 +245,38 @@ int main() {
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
+
+          // Previous path's end s and d values
+          double end_path_s = j[1]["end_path_s"];
+          double end_path_d = j[1]["end_path_d"];
+
+          // Sensor Fusion Data, a list of all other cars on the same side of the road.
+          json sensor_fusion = j[1]["sensor_fusion"];
+
+          json msgJson;
+
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
+
+          // Ego vehicle derived state
+          double car_yaw_rad = deg2rad(car_yaw);
+          double car_speed = car_speed_mph * 0.44704; // mph to mps
+          double car_speed_x = car_speed * cos(car_yaw_rad);
+          double car_speed_y = car_speed * sin(car_yaw_rad);
+          int ego_lane = (int)car_d / lane_width;
+
+          // Get lane speeds
+          int goal_lane = 1; // Center lane
+          const double speed_safety_factor = 0.90;
+          double goal_speed = target_speed;
+          vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, car_speed, sensor_fusion);
+          goal_speed = min(target_speed, lane_speeds[ego_lane] * speed_safety_factor);
+
+          cout << lane_speeds[0] << " " << lane_speeds[1] << " " << lane_speeds[2] << endl;
+
+          // Set goal position
+          const double goal_d = ((double) goal_lane + 1./2.) * (double) lane_width; // Drive in same lane only
+          const double goal_acc = 0;
 
           // Speeds in first to steps, and corresponding acceleration
           double car_acc = 0;
@@ -262,31 +294,9 @@ int main() {
             car_acc = (speed_xy_12 - speed_xy_01)/timestep;
             car_acc_x = (speed_x_12 - speed_x_01)/timestep;
             car_acc_y = (speed_y_12 - speed_y_01)/timestep;
-          } catch (std::domain_error &e){
+          } catch (std::domain_error &e) {
             cout << "Domain error. Yaw (deg): " << car_yaw << endl;
           }
-
-          // Ego vehicle derived state
-          double car_yaw_rad = deg2rad(car_yaw);
-          double car_speed = car_speed_mph * 0.44704; // mph to mps
-          double car_speed_x = car_speed * cos(car_yaw_rad);
-          double car_speed_y = car_speed * sin(car_yaw_rad);
-
-          // Previous path's end s and d values
-          double end_path_s = j[1]["end_path_s"];
-          double end_path_d = j[1]["end_path_d"];
-
-          // Sensor Fusion Data, a list of all other cars on the same side of the road.
-          auto sensor_fusion = j[1]["sensor_fusion"];
-
-          json msgJson;
-
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
-          const double goal_lane = 1.0;
-          const double goal_d = (goal_lane + 1./2.) * lane_width; // Drive in same lane only
-          const double goal_acc = 0;
 
           // XY coordinates
           double goal_x;
@@ -305,15 +315,15 @@ int main() {
           if (goal_yaw_rad > pi()) goal_yaw_rad -= 2*pi();
 
           // TODO: Limit goal speed based on current speed
-          double goal_speed_x = target_speed * cos(goal_yaw_rad);
-          double goal_speed_y = target_speed * sin(goal_yaw_rad);
-          //double goal_speed_x = min(target_speed, car_speed + time * limit_mean_acc) * cos(goal_yaw_rad);
-          //double goal_speed_y = min(target_speed, car_speed + time * limit_mean_acc) * sin(goal_yaw_rad);
+          double goal_speed_x = goal_speed * cos(goal_yaw_rad);
+          double goal_speed_y = goal_speed * sin(goal_yaw_rad);
+          //double goal_speed_x = min(goal_speed, car_speed + time * limit_mean_acc) * cos(goal_yaw_rad);
+          //double goal_speed_y = min(goal_speed, car_speed + time * limit_mean_acc) * sin(goal_yaw_rad);
 
           double travel_distance = goal_s - car_s;
           // Wrap around max_s = 6945.554
           if (travel_distance < 0) travel_distance += 6945.554;
-          double travel_time = travel_distance / ((target_speed + car_speed) * 0.5 );
+          double travel_time = travel_distance / ((goal_speed + car_speed) * 0.5 );
           double travel_steps = travel_time / timestep;
 
           cout << waypoint << " " << car_x << " " << goal_x << " " << car_y << " " << goal_y << " " << car_s << " " << goal_s << " " << travel_distance << endl;
@@ -333,7 +343,7 @@ int main() {
           Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, travel_time);
           Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
 
-          if (previous_path_x.size() > travel_steps/2) {
+          if (previous_path_x.size() > travel_steps/1.5) {
             for (size_t i = 0; i < previous_path_x.size(); i ++) {
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);
