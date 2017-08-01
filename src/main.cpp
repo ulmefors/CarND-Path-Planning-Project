@@ -72,6 +72,8 @@ int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> ma
 
 int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
 {
+  assert(maps_x.size() == maps_y.size());
+  int nb_waypoints = maps_x.size();
 
 	int closestWaypoint = ClosestWaypoint(x,y,maps_x,maps_y);
 
@@ -82,12 +84,14 @@ int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector
 
 	double angle = abs(theta-heading);
 
+  // Closest waypoint is behind ego vehicle if outside +/- 45°
 	if(angle > pi()/4)
 	{
 		closestWaypoint++;
 	}
 
-	return closestWaypoint;
+  // Return first waypoint if trying to access index out of bounds
+	return closestWaypoint % nb_waypoints;
 
 }
 
@@ -225,7 +229,7 @@ int main() {
           // j[1] is the data JSON object
 
           // Constants
-          const double target_speed = 10; // 10 m/s = 22.37 mph
+          const double target_speed = 20; // 10 m/s = 22.37 mph
           const double timestep = 0.02; // 0.02 second update
           const double lane_width = 4.0; // 4 m lane
           const double limit_mean_acc = 1.0;
@@ -241,8 +245,6 @@ int main() {
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
-
-          //cout << previous_path_x.size() << " " << previous_path_x[0] << endl;
 
           // Speeds in first to steps, and corresponding acceleration
           double car_acc = 0;
@@ -282,47 +284,41 @@ int main() {
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
-          // Find the next waypoints in global (x, y)
-          // Convert waypoints to Frenet (s, d)
-          // Decide (s, d) positions for car
-          // Convert (s, d) to (x, y)
-          // Feed waypoints (and intermediates) (x, y) to car
-
-          const size_t nb_steps = 200;
-          const double step_length = target_speed * timestep; // 0.2 m per 0.02 s -> 10 m/s
           const double goal_lane = 1.0;
-
-          double distance = nb_steps * step_length; // 10 meter prediction horizon
-          double time = distance / target_speed; // 10 m / 10 m/s -> 1.0 sec prediction
-          double goal_s = car_s + distance;
-          double goal_d = (goal_lane + 1./2.) * lane_width; // Drive in same lane only
-
-          double goal_speed = min(target_speed, car_speed + time * limit_mean_acc);
-          double goal_acc = 0;
-
-          // SD coordinates
-          vector<double> s_start = {car_s, car_speed, car_acc};
-          vector<double> s_goal = {goal_s, goal_speed, goal_acc};
-
-          vector<double> d_start = {car_d, 0, 0};
-          vector<double> d_goal = {car_d, 0, 0};
-
-          Eigen::VectorXd s_alpha = JerkMinimizeTrajectory(s_start, s_goal, time);
-          Eigen::VectorXd d_alpha = JerkMinimizeTrajectory(d_start, d_goal, time);
+          const double goal_d = (goal_lane + 1./2.) * lane_width; // Drive in same lane only
+          const double goal_acc = 0;
 
           // XY coordinates
-          vector<double> x_y_goal = getXY(goal_s, goal_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          double goal_x = x_y_goal[0];
-          double goal_y = x_y_goal[1];
-          int closest_waypoint = ClosestWaypoint(goal_x, goal_y, map_waypoints_x, map_waypoints_y);
-          goal_x = map_waypoints_x[closest_waypoint];
-          goal_y = map_waypoints_y[closest_waypoint];
-          goal_s = map_waypoints_s[closest_waypoint];
-          double dx = map_waypoints_dx[closest_waypoint];
-          double dy = map_waypoints_dy[closest_waypoint];
-          double goal_yaw_rad = atan(-dx/dy);
+          double goal_x;
+          double goal_y;
+          double goal_s;
+
+          // Find next waypoint
+          int car_waypoint = NextWaypoint(car_x, car_y, car_yaw_rad, map_waypoints_x, map_waypoints_y);
+          int waypoint = car_waypoint;
+          goal_x = map_waypoints_x[waypoint];
+          goal_y = map_waypoints_y[waypoint];
+          goal_s = map_waypoints_s[waypoint];
+          double dx = map_waypoints_dx[waypoint];
+          double dy = map_waypoints_dy[waypoint];
+          double goal_yaw_rad = -atan2(-dx, -dy);
+          if (goal_yaw_rad > pi()) goal_yaw_rad -= 2*pi();
+
+          // TODO: Limit goal speed based on current speed
           double goal_speed_x = target_speed * cos(goal_yaw_rad);
           double goal_speed_y = target_speed * sin(goal_yaw_rad);
+          //double goal_speed_x = min(target_speed, car_speed + time * limit_mean_acc) * cos(goal_yaw_rad);
+          //double goal_speed_y = min(target_speed, car_speed + time * limit_mean_acc) * sin(goal_yaw_rad);
+
+          double travel_distance = goal_s - car_s;
+          // Wrap around max_s = 6945.554
+          if (travel_distance < 0) travel_distance += 6945.554;
+          double travel_time = travel_distance / ((target_speed + car_speed) * 0.5 );
+          double travel_steps = travel_time / timestep;
+
+          cout << waypoint << " " << car_x << " " << goal_x << " " << car_y << " " << goal_y << " " << car_s << " " << goal_s << " " << travel_distance << endl;
+          cout << car_yaw_rad << " " << goal_yaw_rad << " " << car_speed_x << " " << goal_speed_x << " " << car_speed_y << " " << goal_speed_y << endl;
+          cout << endl;
 
           // Adjustment in D
           goal_x += dx * goal_d;
@@ -334,29 +330,21 @@ int main() {
           vector<double> y_start = {car_y, car_speed_y, car_acc_y};
           vector<double> y_goal = {goal_y, goal_speed_y, goal_acc};
 
-          Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, time);
-          Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, time);
+          Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, travel_time);
+          Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
 
-          if (previous_path_x.size() > 10) {
+          if (previous_path_x.size() > travel_steps/2) {
             for (size_t i = 0; i < previous_path_x.size(); i ++) {
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);
             }
           }
           else {
-            for (size_t i = 0; i < nb_steps; i++) {
-
-              double s_position = EvaluatePolynomialAtValue(s_alpha, timestep * i);
+            for (size_t i = 0; i < travel_steps; i++) {
               double x_position = EvaluatePolynomialAtValue(x_alpha, timestep * i);
               double y_position = EvaluatePolynomialAtValue(y_alpha, timestep * i);
               next_x_vals.push_back(x_position);
               next_y_vals.push_back(y_position);
-
-              /*
-              vector<double> x_y_position = getXY(s_position, d_position, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-              next_x_vals.push_back(x_y_position[0]);
-              next_y_vals.push_back(x_y_position[1]);
-              */
             }
           }
 
@@ -410,83 +398,3 @@ int main() {
   }
   h.run();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
