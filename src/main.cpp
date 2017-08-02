@@ -233,6 +233,7 @@ int main() {
           const double timestep = 0.02; // 0.02 second update
           const int lane_width = 4; // 4 m lane
           const double limit_mean_acc = 1.0;
+          const double speed_safety_factor = 0.95;
 
           // Ego vehicle localization data (global coordinates)
           double car_x = j[1]["x"];
@@ -266,16 +267,39 @@ int main() {
           int ego_lane = (int)car_d / lane_width;
 
           // Get lane speeds
-          int goal_lane = 1; // Center lane
-          const double speed_safety_factor = 0.90;
+          int goal_lane = ego_lane; // Default to current lane
           double goal_speed = target_speed;
-          vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, car_speed, sensor_fusion);
-          goal_speed = min(target_speed, lane_speeds[ego_lane] * speed_safety_factor);
 
-          cout << lane_speeds[0] << " " << lane_speeds[1] << " " << lane_speeds[2] << endl;
+          // Choose lane
+          vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, target_speed, sensor_fusion);
+
+          if (lane_speeds[ego_lane] < target_speed) {
+            // if current lane speed is limited
+            goal_speed = lane_speeds[ego_lane] * speed_safety_factor;
+
+            if (ego_lane != 1) {
+              if (lane_speeds[1] > target_speed) {
+                goal_lane = 1;
+                goal_speed = car_speed;
+              }
+            }
+            else {
+              if (lane_speeds[0] > target_speed) {
+                goal_lane = 0;
+                goal_speed = car_speed;
+              }
+              else if (lane_speeds[2] > target_speed) {
+                goal_lane = 2;
+                goal_speed = car_speed;
+              }
+            }
+          } else {
+            // if current lane speed is not limited
+            goal_speed = target_speed;
+          }
 
           // Set goal position
-          const double goal_d = ((double) goal_lane + 1./2.) * (double) lane_width; // Drive in same lane only
+          const double goal_d = ((double)goal_lane + 1./2.) * (double)lane_width;
           const double goal_acc = 0;
 
           // Speeds in first to steps, and corresponding acceleration
@@ -295,7 +319,7 @@ int main() {
             car_acc_x = (speed_x_12 - speed_x_01)/timestep;
             car_acc_y = (speed_y_12 - speed_y_01)/timestep;
           } catch (std::domain_error &e) {
-            cout << "Domain error. Yaw (deg): " << car_yaw << endl;
+            cout << "Domain error accessing previous_path" << endl;
           }
 
           // XY coordinates
@@ -326,9 +350,11 @@ int main() {
           double travel_time = travel_distance / ((goal_speed + car_speed) * 0.5 );
           double travel_steps = travel_time / timestep;
 
+          /*
           cout << waypoint << " " << car_x << " " << goal_x << " " << car_y << " " << goal_y << " " << car_s << " " << goal_s << " " << travel_distance << endl;
           cout << car_yaw_rad << " " << goal_yaw_rad << " " << car_speed_x << " " << goal_speed_x << " " << car_speed_y << " " << goal_speed_y << endl;
           cout << endl;
+           */
 
           // Adjustment in D
           goal_x += dx * goal_d;
@@ -343,7 +369,7 @@ int main() {
           Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, travel_time);
           Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
 
-          if (previous_path_x.size() > travel_steps/1.5) {
+          if (previous_path_x.size() > 20) {
             for (size_t i = 0; i < previous_path_x.size(); i ++) {
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);

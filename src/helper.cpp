@@ -34,16 +34,14 @@ double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value) {
   return sum;
 }
 
-vector<double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double ego_speed, json vehicles) {
+vector<double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double target_speed, json vehicles) {
 
-  const double safety_distance_forward = ego_speed * 2;
-  const double safety_distance_backward = 5.0;
+  const double safety_distance_forward = 60.0;
   const int lane_width = 4;
 
   const size_t num_lanes = 3;
-  const double standard_speed = 100.0; // Large number
   vector<double> lane_speeds;
-  lane_speeds.assign(num_lanes, standard_speed);
+  lane_speeds.assign(num_lanes, target_speed * 2);
 
   for (int i = 0; i < vehicles.size(); i++) {
     json vehicle = vehicles[i];
@@ -56,26 +54,11 @@ vector<double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double ego_spee
     double car_d_pos = vehicle[6];
     double car_speed = sqrt(car_x_vel*car_x_vel + car_y_vel*car_y_vel);
 
-
     int car_lane = (int)car_d_pos / lane_width;
-    int ego_lane = (int)ego_d_pos / lane_width;
-
-    /*
-    if (car_lane == ego_lane) {
-      if (car_s_pos < (ego_s_pos + safety_distance_forward)) {
-        lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
-      }
-    } else {
-      if (car_s_pos < (ego_s_pos + safety_distance_forward) && car_s_pos > (ego_s_pos - safety_distance_backward)) {
-        lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
-      }
-    }
-     */
 
     if (car_s_pos < (ego_s_pos + safety_distance_forward) && car_s_pos > ego_s_pos) {
       lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
     }
-
   }
 
   return lane_speeds;

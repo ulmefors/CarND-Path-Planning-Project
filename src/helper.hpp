@@ -19,4 +19,4 @@ Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal
 
 double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value);
 
-vector <double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double ego_speed, json vehicles);
+vector <double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double target_speed, json vehicles);
