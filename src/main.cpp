@@ -172,6 +172,39 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 
 }
 
+// Calculate acceleration based on series of positions
+vector<double> CalculateAccelerations(json previous_path_x, json previous_path_y, double timestep)
+{
+  // Speeds in first two steps, and corresponding acceleration
+  double car_acc;
+  double car_acc_x;
+  double car_acc_y;
+
+  if (previous_path_x.size()>=3 && previous_path_y.size()>3) {
+    double speed_x_01 = (double(previous_path_x[1]) - double(previous_path_x[0])) / timestep;
+    double speed_x_12 = (double(previous_path_x[2]) - double(previous_path_x[1])) / timestep;
+    double speed_y_01 = (double(previous_path_y[1]) - double(previous_path_y[0])) / timestep;
+    double speed_y_12 = (double(previous_path_y[2]) - double(previous_path_y[1])) / timestep;
+    double speed_xy_01 = distance(previous_path_x[0], previous_path_y[0],
+                                  previous_path_x[1], previous_path_y[1]) / timestep;
+    double speed_xy_12 = distance(previous_path_x[1], previous_path_y[1],
+                                  previous_path_x[2], previous_path_y[2]) / timestep;
+    car_acc = (speed_xy_12 - speed_xy_01)/timestep;
+    car_acc_x = (speed_x_12 - speed_x_01)/timestep;
+    car_acc_y = (speed_y_12 - speed_y_01)/timestep;
+  } else {
+    // Default values
+    car_acc = 0;
+    car_acc_x = 0;
+    car_acc_y = 0;
+  }
+
+  return {car_acc, car_acc_x, car_acc_y};
+}
+
+// Determine desired speed and lane
+
+
 int main() {
   uWS::Hub h;
 
@@ -302,25 +335,11 @@ int main() {
           const double goal_d = ((double)goal_lane + 1./2.) * (double)lane_width;
           const double goal_acc = 0;
 
-          // Speeds in first to steps, and corresponding acceleration
-          double car_acc = 0;
-          double car_acc_x = 0;
-          double car_acc_y = 0;
-          try {
-            double speed_x_01 = (double(previous_path_x[1]) - double(previous_path_x[0])) / timestep;
-            double speed_x_12 = (double(previous_path_x[2]) - double(previous_path_x[1])) / timestep;
-            double speed_y_01 = (double(previous_path_y[1]) - double(previous_path_y[0])) / timestep;
-            double speed_y_12 = (double(previous_path_y[2]) - double(previous_path_y[1])) / timestep;
-            double speed_xy_01 = distance(previous_path_x[0], previous_path_y[0],
-                                          previous_path_x[1], previous_path_y[1]) / timestep;
-            double speed_xy_12 = distance(previous_path_x[1], previous_path_y[1],
-                                          previous_path_x[2], previous_path_y[2]) / timestep;
-            car_acc = (speed_xy_12 - speed_xy_01)/timestep;
-            car_acc_x = (speed_x_12 - speed_x_01)/timestep;
-            car_acc_y = (speed_y_12 - speed_y_01)/timestep;
-          } catch (std::domain_error &e) {
-            cout << "Domain error accessing previous_path" << endl;
-          }
+          // Get accelerations
+          vector<double> acceleration = CalculateAccelerations(previous_path_x, previous_path_y, timestep);
+          double car_acc = acceleration[0];
+          double car_acc_x = acceleration[1];
+          double car_acc_y = acceleration[2];
 
           // XY coordinates
           double goal_x;
