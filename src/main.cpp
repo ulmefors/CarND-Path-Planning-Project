@@ -173,36 +173,38 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 }
 
 // Calculate acceleration based on series of positions
-vector<double> CalculateAccelerations(json previous_path_x, json previous_path_y, double timestep)
+vector<vector<double>> CalculateState(int pos, json previous_path_x, json previous_path_y, double timestep)
 {
+  double car_x = previous_path_x[pos];
+  double car_y = previous_path_y[pos];
+
   // Speeds in first two steps, and corresponding acceleration
-  double car_acc;
+  // double car_acc;
   double car_acc_x;
   double car_acc_y;
 
-  if (previous_path_x.size()>=3 && previous_path_y.size()>3) {
-    double speed_x_01 = (double(previous_path_x[1]) - double(previous_path_x[0])) / timestep;
-    double speed_x_12 = (double(previous_path_x[2]) - double(previous_path_x[1])) / timestep;
-    double speed_y_01 = (double(previous_path_y[1]) - double(previous_path_y[0])) / timestep;
-    double speed_y_12 = (double(previous_path_y[2]) - double(previous_path_y[1])) / timestep;
-    double speed_xy_01 = distance(previous_path_x[0], previous_path_y[0],
-                                  previous_path_x[1], previous_path_y[1]) / timestep;
-    double speed_xy_12 = distance(previous_path_x[1], previous_path_y[1],
-                                  previous_path_x[2], previous_path_y[2]) / timestep;
-    car_acc = (speed_xy_12 - speed_xy_01)/timestep;
-    car_acc_x = (speed_x_12 - speed_x_01)/timestep;
-    car_acc_y = (speed_y_12 - speed_y_01)/timestep;
-  } else {
-    // Default values
-    car_acc = 0;
-    car_acc_x = 0;
-    car_acc_y = 0;
-  }
+  if (pos == 0) ++pos;
 
-  return {car_acc, car_acc_x, car_acc_y};
+  double speed_before_x = (double(previous_path_x[pos]) - double(previous_path_x[pos-1])) / timestep;
+  double speed_after_x = (double(previous_path_x[pos+1]) - double(previous_path_x[pos])) / timestep;
+  double speed_before_y = (double(previous_path_y[pos]) - double(previous_path_y[pos-1])) / timestep;
+  double speed_after_y = (double(previous_path_y[pos+1]) - double(previous_path_y[pos])) / timestep;
+  car_acc_x = (speed_after_x - speed_before_x)/timestep;
+  car_acc_y = (speed_after_y - speed_before_y)/timestep;
+
+  /*
+  double speed_before = distance(previous_path_x[pos-1], previous_path_y[pos-1],
+                                 previous_path_x[pos], previous_path_y[pos]) / timestep;
+  double speed_after = distance(previous_path_x[pos], previous_path_y[pos],
+                                previous_path_x[pos+1], previous_path_y[pos+1]) / timestep;
+  car_acc = (speed_after - speed_before)/timestep;
+  */
+
+  return {
+      {car_x, (speed_before_x + speed_after_x)/2, car_acc_x},
+      {car_y, (speed_before_y + speed_after_y)/2, car_acc_y}
+  };
 }
-
-// Determine desired speed and lane
 
 
 int main() {
@@ -336,10 +338,16 @@ int main() {
           const double goal_acc = 0;
 
           // Get accelerations
-          vector<double> acceleration = CalculateAccelerations(previous_path_x, previous_path_y, timestep);
-          double car_acc = acceleration[0];
-          double car_acc_x = acceleration[1];
-          double car_acc_y = acceleration[2];
+          int position = 0;
+          double car_acc_x = 0;
+          double car_acc_y = 0;
+          if (previous_path_x.size() > position + 2) {
+            vector<vector<double>> state = CalculateState(position, previous_path_x, previous_path_y, timestep);
+            vector<double> state_x = state[0];
+            vector<double> state_y = state[1];
+            car_acc_x = state_x[2];
+            car_acc_y = state_y[2];
+          }
 
           // XY coordinates
           double goal_x;
