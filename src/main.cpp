@@ -349,13 +349,23 @@ int main() {
             car_acc_y = state_y[2];
           }
 
+          // Position ahead
+          int pos_ahead = 10;
+          vector<double> state_ahead_x = {0, 0, 0};
+          vector<double> state_ahead_y = {0, 0, 0};
+          if (previous_path_x.size() > position + 2) {
+            vector<vector<double>> state = CalculateState(pos_ahead, previous_path_x, previous_path_y, timestep);
+            state_ahead_x = state[0];
+            state_ahead_y = state[1];
+          }
+
           // XY coordinates
           double goal_x;
           double goal_y;
           double goal_s;
 
           // Find next waypoint
-          int car_waypoint = NextWaypoint(car_x, car_y, car_yaw_rad, map_waypoints_x, map_waypoints_y);
+          int car_waypoint = NextWaypoint(car_x + car_speed_x * 0.2, car_y + car_speed_y * 0.2, car_yaw_rad, map_waypoints_x, map_waypoints_y);
           int waypoint = car_waypoint;
           goal_x = map_waypoints_x[waypoint];
           goal_y = map_waypoints_y[waypoint];
@@ -393,14 +403,25 @@ int main() {
           vector<double> y_start = {car_y, car_speed_y, car_acc_y};
           vector<double> y_goal = {goal_y, goal_speed_y, goal_acc};
 
+          Eigen::VectorXd x_ahead_alpha = JerkMinimizeTrajectory(state_ahead_x, x_goal, travel_time - 0.2);
+          Eigen::VectorXd y_ahead_alpha = JerkMinimizeTrajectory(state_ahead_y, y_goal, travel_time - 0.2);
+
           Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, travel_time);
           Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
 
-          if (previous_path_x.size() > 20) {
-            for (size_t i = 0; i < previous_path_x.size(); i ++) {
+          if (previous_path_x.size() > 10) {
+            for (size_t i = 0; i < 10; i ++) {
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);
             }
+
+            for (int i = 0; i < travel_steps - pos_ahead and i < 50; i++) {
+              double x_position = EvaluatePolynomialAtValue(x_ahead_alpha, timestep * i);
+              double y_position = EvaluatePolynomialAtValue(y_ahead_alpha, timestep * i);
+              next_x_vals.push_back(x_position);
+              next_y_vals.push_back(y_position);
+            }
+
           }
           else {
             for (size_t i = 0; i < travel_steps; i++) {
