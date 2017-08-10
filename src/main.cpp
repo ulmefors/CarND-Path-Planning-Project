@@ -245,7 +245,15 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  // Create splines
+  tk::spline x, y, dx, dy;
+  x.set_points(map_waypoints_s, map_waypoints_x);
+  y.set_points(map_waypoints_s, map_waypoints_y);
+  dx.set_points(map_waypoints_s, map_waypoints_dx);
+  dy.set_points(map_waypoints_s, map_waypoints_dy);
+  vector<tk::spline> splines = {x, y, dx, dy};
+
+  h.onMessage([&splines, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -295,11 +303,18 @@ int main() {
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
+          tk::spline x_spline = splines[0];
+          tk::spline y_spline = splines[1];
+          tk::spline dx_spline = splines[2];
+          tk::spline dy_spline = splines[3];
+
+
           // Ego vehicle derived state
           double car_yaw_rad = deg2rad(car_yaw);
           double car_speed = car_speed_mph * 0.44704; // mph to mps
           double car_speed_x = car_speed * cos(car_yaw_rad);
           double car_speed_y = car_speed * sin(car_yaw_rad);
+
           int ego_lane = (int)car_d / lane_width;
 
           // Get lane speeds
@@ -334,6 +349,7 @@ int main() {
             goal_speed = target_speed;
           }
 
+          /*
           // Set goal position
           const double goal_d = ((double)goal_lane + 1./2.) * (double)lane_width;
           const double goal_acc = 0;
@@ -388,11 +404,11 @@ int main() {
           double travel_time = travel_distance / ((goal_speed + car_speed) * 0.5 );
           double travel_steps = travel_time / timestep;
 
-          /*
-          cout << waypoint << " " << car_x << " " << goal_x << " " << car_y << " " << goal_y << " " << car_s << " " << goal_s << " " << travel_distance << endl;
-          cout << car_yaw_rad << " " << goal_yaw_rad << " " << car_speed_x << " " << goal_speed_x << " " << car_speed_y << " " << goal_speed_y << endl;
-          cout << endl;
-           */
+
+          // cout << waypoint << " " << car_x << " " << goal_x << " " << car_y << " " << goal_y << " " << car_s << " " << goal_s << " " << travel_distance << endl;
+          // cout << car_yaw_rad << " " << goal_yaw_rad << " " << car_speed_x << " " << goal_speed_x << " " << car_speed_y << " " << goal_speed_y << endl;
+          // cout << endl;
+
 
           // Adjustment in D
           goal_x += dx * goal_d;
@@ -409,6 +425,68 @@ int main() {
 
           Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, travel_time);
           Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
+          */
+
+          double step = min(lane_speeds[1], target_speed * 0.9) * timestep;
+          cout << step << endl;
+          double d_val = 6.0;
+          int horizon = 50;
+          int num_prev_path_points = previous_path_x.size();
+          double s_start = -1;
+          double last_x = -1;
+          double last_y = -1;
+
+          if (!previous_path_x.empty()) {
+            for (int i = 0; i < num_prev_path_points; ++i) {
+              next_x_vals.push_back(previous_path_x[i]);
+              next_y_vals.push_back(previous_path_y[i]);
+            }
+            last_x = previous_path_x[num_prev_path_points-1];
+            last_y = previous_path_y[num_prev_path_points-1];
+
+            double s_range = 1.0;
+            int half_range = 50;
+            double min_distance = 1000; // large number
+            double s_closest = 0;
+            for(int i = 0; i <= 2*half_range; ++i) {
+              double s = end_path_s + ((double)(i-half_range))*s_range/(double)half_range;
+              double dx = dx_spline(s);
+              double dy = dy_spline(s);
+              double x = x_spline(s) + d_val*dx;
+              double y = y_spline(s) + d_val*dy;
+              double dist = distance(x, y, last_x, last_y);
+              if (dist < min_distance) {
+                min_distance = dist;
+                s_closest = s;
+              }
+            }
+            s_start = s_closest;
+          }
+          else {
+            s_start = car_s - step;
+            cout << "car_s: " << car_s << endl;
+          }
+
+          double s = s_start;
+          double dx = dx_spline(s);
+          double dy = dy_spline(s);
+          double x = x_spline(s) + d_val*dx;
+          double y = y_spline(s) + d_val*dy;
+          cout << s << " " << x << " " << y << " " << last_x << " " << last_y << endl;
+
+          for (int i = 0; i < horizon - num_prev_path_points; ++i) {
+            double s = s_start + (i+1)*step;
+            double dx = dx_spline(s);
+            double dy = dy_spline(s);
+            double x = x_spline(s) + d_val*dx;
+            double y = y_spline(s) + d_val*dy;
+            next_x_vals.push_back(x);
+            next_y_vals.push_back(y);
+            cout << s << " "<< x << " " << y << endl;
+          }
+
+
+          /*
 
           if (previous_path_x.size() > 10) {
             for (size_t i = 0; i < 10; i ++) {
@@ -432,6 +510,7 @@ int main() {
               next_y_vals.push_back(y_position);
             }
           }
+           */
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
