@@ -9,6 +9,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
 #include "helper.hpp"
+#include "spline.h"
 
 using namespace std;
 
