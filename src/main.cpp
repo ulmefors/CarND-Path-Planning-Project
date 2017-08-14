@@ -174,8 +174,9 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 }
 
 // Calculate acceleration based on series of positions
-vector<vector<double>> CalculateState(int pos, json previous_path_x, json previous_path_y, double timestep)
+vector<vector<double>> CalculateState(int pos, json previous_path_x, json previous_path_y)
 {
+  double timestep = 0.02;
   double car_x = previous_path_x[pos];
   double car_y = previous_path_y[pos];
 
@@ -183,8 +184,6 @@ vector<vector<double>> CalculateState(int pos, json previous_path_x, json previo
   // double car_acc;
   double car_acc_x;
   double car_acc_y;
-
-  if (pos == 0) ++pos;
 
   double speed_before_x = (double(previous_path_x[pos]) - double(previous_path_x[pos-1])) / timestep;
   double speed_after_x = (double(previous_path_x[pos+1]) - double(previous_path_x[pos])) / timestep;
@@ -251,9 +250,14 @@ int main() {
   y.set_points(map_waypoints_s, map_waypoints_y);
   dx.set_points(map_waypoints_s, map_waypoints_dx);
   dy.set_points(map_waypoints_s, map_waypoints_dy);
-  vector<tk::spline> splines = {x, y, dx, dy};
 
-  h.onMessage([&splines, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  Helper helper = Helper();
+  helper.x = x;
+  helper.y = y;
+  helper.dx = dx;
+  helper.dy = dy;
+
+  h.onMessage([&helper, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -273,7 +277,7 @@ int main() {
           // j[1] is the data JSON object
 
           // Constants
-          const double target_speed = 20; // 10 m/s = 22.37 mph
+          const double max_speed = 20; // 10 m/s = 22.37 mph
           const double timestep = 0.02; // 0.02 second update
           const int lane_width = 4; // 4 m lane
           const double limit_mean_acc = 1.0;
@@ -302,12 +306,15 @@ int main() {
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          vector<double> next_s_vals;
+          vector<double> next_d_vals;
 
-          tk::spline x_spline = splines[0];
-          tk::spline y_spline = splines[1];
-          tk::spline dx_spline = splines[2];
-          tk::spline dy_spline = splines[3];
+          tk::spline x_spline = helper.x;
+          tk::spline y_spline = helper.y;
+          tk::spline dx_spline = helper.dx;
+          tk::spline dy_spline = helper.dy;
 
+          cout << "s: " << car_s << " d: " << car_d << " x: " << car_x << " y: " << car_y << endl;
 
           // Ego vehicle derived state
           double car_yaw_rad = deg2rad(car_yaw);
@@ -319,34 +326,34 @@ int main() {
 
           // Get lane speeds
           int goal_lane = ego_lane; // Default to current lane
-          double goal_speed = target_speed;
+          double goal_speed = max_speed;
 
           // Choose lane
-          vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, target_speed, sensor_fusion);
+          vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, max_speed, sensor_fusion);
 
-          if (lane_speeds[ego_lane] < target_speed) {
+          if (lane_speeds[ego_lane] < max_speed) {
             // if current lane speed is limited
             goal_speed = lane_speeds[ego_lane] * speed_safety_factor;
 
             if (ego_lane != 1) {
-              if (lane_speeds[1] > target_speed) {
+              if (lane_speeds[1] > max_speed) {
                 goal_lane = 1;
                 goal_speed = car_speed;
               }
             }
             else {
-              if (lane_speeds[0] > target_speed) {
+              if (lane_speeds[0] > max_speed) {
                 goal_lane = 0;
                 goal_speed = car_speed;
               }
-              else if (lane_speeds[2] > target_speed) {
+              else if (lane_speeds[2] > max_speed) {
                 goal_lane = 2;
                 goal_speed = car_speed;
               }
             }
           } else {
             // if current lane speed is not limited
-            goal_speed = target_speed;
+            goal_speed = max_speed;
           }
 
           /*
@@ -427,33 +434,41 @@ int main() {
           Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
           */
 
-          double step = min(lane_speeds[1], target_speed * 0.9) * timestep;
-          cout << step << endl;
+          double target_speed = min(lane_speeds[1], max_speed * 0.9);
+          double step = target_speed * timestep;
           double d_val = 6.0;
-          int horizon = 50;
+          int horizon = 100;
           int num_prev_path_points = previous_path_x.size();
           double s_start = -1;
           double last_x = -1;
           double last_y = -1;
 
+          int num_new_steps = horizon - num_prev_path_points;
+
           if (!previous_path_x.empty()) {
             for (int i = 0; i < num_prev_path_points; ++i) {
+              // TODO: Confirm this line
+              double s = helper.s_vals[i + num_new_steps];
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);
+              next_s_vals.push_back(s);
             }
             last_x = previous_path_x[num_prev_path_points-1];
             last_y = previous_path_y[num_prev_path_points-1];
 
-            double s_range = 1.0;
-            int half_range = 50;
+            double s_range = 2.0;
+            int half_range = 100;
             double min_distance = 1000; // large number
             double s_closest = 0;
+            double s_approx = end_path_s;
+            //double s_approx = helper.s_vals[num_prev_path_points -1 + num_new_steps];
+
+            cout << "s_approx: " << s_approx << " x(s_approx): " << x_spline(s_approx) + d_val*dx_spline(s_approx) << " x_prev: " << last_x << endl;
+
             for(int i = 0; i <= 2*half_range; ++i) {
-              double s = end_path_s + ((double)(i-half_range))*s_range/(double)half_range;
-              double dx = dx_spline(s);
-              double dy = dy_spline(s);
-              double x = x_spline(s) + d_val*dx;
-              double y = y_spline(s) + d_val*dy;
+              double s = s_approx + ((double)(i-half_range))*s_range/(double)half_range;
+              double x = x_spline(s) + d_val*dx_spline(s);
+              double y = y_spline(s) + d_val*dy_spline(s);
               double dist = distance(x, y, last_x, last_y);
               if (dist < min_distance) {
                 min_distance = dist;
@@ -467,23 +482,64 @@ int main() {
             cout << "car_s: " << car_s << endl;
           }
 
+          if (previous_path_x.empty()) {
+
+            Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, 0, 0},
+                                                             {s_start + 1, 1.5, 3},
+                                                             num_new_steps * timestep);
+
+            for (int i = 0; i < num_new_steps; ++i) {
+              //double s = s_start + (i+1)*step;
+              double s = EvaluatePolynomialAtValue(s_alpha, timestep * (i+1));
+              double x = x_spline(s) + d_val*dx_spline(s);
+              double y = y_spline(s) + d_val*dy_spline(s);
+              next_x_vals.push_back(x);
+              next_y_vals.push_back(y);
+              next_s_vals.push_back(s);
+              cout << "Init point: " << s << " "<< x << " " << y << endl;
+            }
+          }
+          else {
+            vector<vector<double>> xy_state = CalculateState(num_prev_path_points-2, previous_path_x, previous_path_y);
+            vector<double> x_state = xy_state[0];
+            vector<double> y_state = xy_state[1];
+            double total_speed = sqrt(x_state[1]*x_state[1] + y_state[1]*y_state[1]);
+            double total_acc = sqrt(x_state[2]*x_state[2] + y_state[2]*y_state[2]);
+
+
+            double travel_time = num_new_steps * timestep;
+            cout << "state: " << total_speed << " " << total_acc << " " << travel_time << endl;
+            Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, total_speed, total_acc},
+                                                             {s_start + num_new_steps*step, total_speed, 0}, travel_time);
+
+            for (int i = 0; i < num_new_steps; ++i) {
+              //double s = s_start + (i+1)*step;
+              double s = EvaluatePolynomialAtValue(s_alpha, timestep * (i+1));
+              double dx = dx_spline(s);
+              double dy = dy_spline(s);
+              double x = x_spline(s) + d_val*dx;
+              double y = y_spline(s) + d_val*dy;
+              next_x_vals.push_back(x);
+              next_y_vals.push_back(y);
+              next_s_vals.push_back(s);
+              cout << "add s,x,y: " << s << " "<< x << " " << y << endl;
+            }
+          }
+
+                   /*
+          vector<double> s_start_state = {s_start, target_speed, car_acc_x};
+          vector<double> s_goal_state = {goal_x, goal_speed_x, goal_acc};
+          */
+
+          /*
           double s = s_start;
           double dx = dx_spline(s);
           double dy = dy_spline(s);
           double x = x_spline(s) + d_val*dx;
           double y = y_spline(s) + d_val*dy;
           cout << s << " " << x << " " << y << " " << last_x << " " << last_y << endl;
+          */
 
-          for (int i = 0; i < horizon - num_prev_path_points; ++i) {
-            double s = s_start + (i+1)*step;
-            double dx = dx_spline(s);
-            double dy = dy_spline(s);
-            double x = x_spline(s) + d_val*dx;
-            double y = y_spline(s) + d_val*dy;
-            next_x_vals.push_back(x);
-            next_y_vals.push_back(y);
-            cout << s << " "<< x << " " << y << endl;
-          }
 
 
           /*
@@ -514,6 +570,11 @@ int main() {
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
+
+          // Save for next cycle
+          helper.x_vals = next_x_vals;
+          helper.y_vals = next_y_vals;
+          helper.s_vals = next_s_vals;
 
           auto msg = "42[\"control\","+ msgJson.dump()+"]";
 

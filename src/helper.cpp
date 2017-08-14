@@ -43,8 +43,7 @@ vector<double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double target_s
   vector<double> lane_speeds;
   lane_speeds.assign(num_lanes, target_speed * 2);
 
-  for (int i = 0; i < vehicles.size(); i++) {
-    json vehicle = vehicles[i];
+  for (auto vehicle : vehicles) {
     int id = vehicle[0];
     double car_x_pos = vehicle[1];
     double car_y_pos = vehicle[2];

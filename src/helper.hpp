@@ -8,9 +8,36 @@
 #endif //PATH_PLANNING_HELPER_H
 
 #include <vector>
-#include <math.h>
+#include <cmath>
 #include "json.hpp"
 #include "Eigen-3.3/Eigen/Dense"
+#include "spline.h"
+
+using namespace std;
+
+class Helper {
+
+public:
+    // Constructors
+    Helper() = default;
+    Helper(const Helper& other) = default;
+    Helper& operator=(const Helper& other) = default;
+    Helper(Helper&& other) = default;
+    Helper& operator=(Helper&& other) = default;
+    ~Helper() = default;
+
+    // Points sent to simulator
+    vector<double> x_vals;
+    vector<double> y_vals;
+    vector<double> s_vals;
+    vector<double> d_vals;
+
+    // Splines
+    tk::spline x;
+    tk::spline y;
+    tk::spline dx;
+    tk::spline dy;
+};
 
 using namespace std;
 using json = nlohmann::json;
