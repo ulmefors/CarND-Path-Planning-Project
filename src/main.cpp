@@ -293,11 +293,10 @@ int main() {
           // j[1] is the data JSON object
 
           // Constants
-          const double max_speed = 20; // 10 m/s = 22.37 mph
+          const double max_speed_mph = 45.0;
+          const double max_speed = max_speed_mph * 0.44704;
           const double timestep = 0.02; // 0.02 second update
           const int lane_width = 4; // 4 m lane
-          const double limit_mean_acc = 1.0;
-          const double speed_safety_factor = 0.95;
 
           // Ego vehicle localization data (global coordinates)
           double car_x = j[1]["x"];
@@ -330,6 +329,9 @@ int main() {
           tk::spline dx_spline = helper.dx;
           tk::spline dy_spline = helper.dy;
 
+          // Number of points in path received from Simulator
+          int prev_path_size = previous_path_x.size();
+
           cout << endl << "* New cycle *" << endl;
           cout << "Car position (from sim) s: " << car_s << " d: " << car_d << " x: " << car_x << " y: " << car_y << endl;
 
@@ -338,12 +340,11 @@ int main() {
           double car_speed = car_speed_mph * 0.44704; // mph to mps
           double car_speed_x = car_speed * cos(car_yaw_rad);
           double car_speed_y = car_speed * sin(car_yaw_rad);
-
           int ego_lane = (int)car_d / lane_width;
 
           // Get lane speeds
           int goal_lane = ego_lane; // Default to current lane
-          double goal_speed = max_speed;
+          double goal_speed = max_speed; // Default to maximum speed
 
           // Choose lane
           vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, max_speed, sensor_fusion);
@@ -354,277 +355,140 @@ int main() {
           }
           cout << endl;
 
-          if (lane_speeds[ego_lane] < max_speed) {
+          if (lane_speeds[ego_lane] < max_speed)
+          {
             // if current lane speed is limited
-            goal_speed = lane_speeds[ego_lane] * speed_safety_factor;
+            goal_speed = lane_speeds[ego_lane];
 
-            if (ego_lane != 1) {
-              if (lane_speeds[1] > max_speed) {
+            if (ego_lane != 1)
+            {
+              if (lane_speeds[1] > max_speed)
+              {
                 goal_lane = 1;
                 goal_speed = car_speed;
               }
             }
-            else {
-              if (lane_speeds[0] > max_speed) {
+            else
+            {
+              if (lane_speeds[0] > max_speed)
+              {
                 goal_lane = 0;
                 goal_speed = car_speed;
               }
-              else if (lane_speeds[2] > max_speed) {
+              else if (lane_speeds[2] > max_speed)
+              {
                 goal_lane = 2;
                 goal_speed = car_speed;
               }
             }
-          } else {
-            // if current lane speed is not limited
-            goal_speed = max_speed;
           }
 
-          /*
-          // Set goal position
-          const double goal_d = ((double)goal_lane + 1./2.) * (double)lane_width;
-          const double goal_acc = 0;
+          // Max speed
+          double ref_speed = max_speed;
 
-          // Get accelerations
-          int position = 0;
-          double car_acc_x = 0;
-          double car_acc_y = 0;
-          if (previous_path_x.size() > position + 2) {
-            vector<vector<double>> state = CalculateState(position, previous_path_x, previous_path_y, timestep);
-            vector<double> state_x = state[0];
-            vector<double> state_y = state[1];
-            car_acc_x = state_x[2];
-            car_acc_y = state_y[2];
-          }
+          // Points used to create smooth spline trajectory ahead from reference position
+          vector <double> ptsx, ptsy;
 
-          // Position ahead
-          int pos_ahead = 10;
-          vector<double> state_ahead_x = {0, 0, 0};
-          vector<double> state_ahead_y = {0, 0, 0};
-          if (previous_path_x.size() > position + 2) {
-            vector<vector<double>> state = CalculateState(pos_ahead, previous_path_x, previous_path_y, timestep);
-            state_ahead_x = state[0];
-            state_ahead_y = state[1];
-          }
+          // Ego vehicle reference position  current position or last position in previous path), and shortly before
+          double ref_x, ref_y;
+          double pre_ref_x, pre_ref_y;
 
-          // XY coordinates
-          double goal_x;
-          double goal_y;
-          double goal_s;
+          // Yaw at reference position
+          double ref_yaw;
 
-          // Find next waypoint
-          int car_waypoint = NextWaypoint(car_x + car_speed_x * 0.2, car_y + car_speed_y * 0.2, car_yaw_rad, map_waypoints_x, map_waypoints_y);
-          int waypoint = car_waypoint;
-          goal_x = map_waypoints_x[waypoint];
-          goal_y = map_waypoints_y[waypoint];
-          goal_s = map_waypoints_s[waypoint];
-          double dx = map_waypoints_dx[waypoint];
-          double dy = map_waypoints_dy[waypoint];
-          double goal_yaw_rad = -atan2(-dx, -dy);
-          if (goal_yaw_rad > pi()) goal_yaw_rad -= 2*pi();
-
-          // TODO: Limit goal speed based on current speed
-          double goal_speed_x = goal_speed * cos(goal_yaw_rad);
-          double goal_speed_y = goal_speed * sin(goal_yaw_rad);
-          //double goal_speed_x = min(goal_speed, car_speed + time * limit_mean_acc) * cos(goal_yaw_rad);
-          //double goal_speed_y = min(goal_speed, car_speed + time * limit_mean_acc) * sin(goal_yaw_rad);
-
-          double travel_distance = goal_s - car_s;
-          // Wrap around max_s = 6945.554
-          if (travel_distance < 0) travel_distance += 6945.554;
-          double travel_time = travel_distance / ((goal_speed + car_speed) * 0.5 );
-          double travel_steps = travel_time / timestep;
-
-
-          // cout << waypoint << " " << car_x << " " << goal_x << " " << car_y << " " << goal_y << " " << car_s << " " << goal_s << " " << travel_distance << endl;
-          // cout << car_yaw_rad << " " << goal_yaw_rad << " " << car_speed_x << " " << goal_speed_x << " " << car_speed_y << " " << goal_speed_y << endl;
-          // cout << endl;
-
-
-          // Adjustment in D
-          goal_x += dx * goal_d;
-          goal_y += dy * goal_d;
-
-          vector<double> x_start = {car_x, car_speed_x, car_acc_x};
-          vector<double> x_goal = {goal_x, goal_speed_x, goal_acc};
-
-          vector<double> y_start = {car_y, car_speed_y, car_acc_y};
-          vector<double> y_goal = {goal_y, goal_speed_y, goal_acc};
-
-          Eigen::VectorXd x_ahead_alpha = JerkMinimizeTrajectory(state_ahead_x, x_goal, travel_time - 0.2);
-          Eigen::VectorXd y_ahead_alpha = JerkMinimizeTrajectory(state_ahead_y, y_goal, travel_time - 0.2);
-
-          Eigen::VectorXd x_alpha = JerkMinimizeTrajectory(x_start, x_goal, travel_time);
-          Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
-          */
-
-          double target_speed = min(lane_speeds[1], max_speed);
-
-          double d_val = 6.0;
-          int horizon = 50;
-          //int num_prev_path_points = previous_path_x.size();
-          int num_reused_path_points = 25;
-          double s_start = -1;
-          double last_x = -1;
-          double last_y = -1;
-          int num_new_steps = horizon - num_reused_path_points;
-          int num_used_steps = horizon - previous_path_x.size();
-
-
-          if (!previous_path_x.empty()) {
-
-            cout << "num_reused_path_points: " << num_reused_path_points << endl;
-            cout << "num_new_steps: " << num_new_steps << endl;
-
-            //TODO: num_new_steps way too big. Out of ArrayIndex!
-            for (int i = 0; i < num_reused_path_points; ++i)
-            {
-              if (i == 0 || i == num_reused_path_points - 1)
-              {
-                cout << helper.s_vals[i + num_used_steps] << " " << helper.x_vals[i + num_used_steps]  << " " << helper.y_vals[i + num_used_steps];
-                cout << " " << previous_path_x[i] << " " << previous_path_y[i] << endl;
-              }
-              else if (i == 1)
-                cout << "..." <<  endl;
-            }
-
-            for (int i = 0; i < num_reused_path_points; ++i) {
-              // TODO: Confirm this line
-              double s = helper.s_vals[i + num_used_steps];
-              next_x_vals.push_back(previous_path_x[i]);
-              next_y_vals.push_back(previous_path_y[i]);
-              next_s_vals.push_back(s);
-            }
-            last_x = next_x_vals[next_x_vals.size()-1];
-            last_y = next_y_vals[next_y_vals.size()-1];
-
-            double s_range = 2.0;
-            int half_range = 100;
-            double min_distance = 1000; // large number
-            double s_closest = 0;
-            //double s_approx = end_path_s;
-            double s_approx = next_s_vals[next_s_vals.size()-1];
-            //double s_approx = helper.s_vals[num_prev_path_points -1 + num_new_steps];
-
-            cout << "x(s_approx): " << x_spline(s_approx) + d_val*dx_spline(s_approx) << " x: " << next_x_vals[next_x_vals.size()-1] << endl;
-
-            /*
-            for(int i = 0; i <= 2*half_range; ++i) {
-              double s = s_approx + ((double)(i-half_range))*s_range/(double)half_range;
-              double x = x_spline(s) + d_val*dx_spline(s);
-              double y = y_spline(s) + d_val*dy_spline(s);
-              double dist = distance(x, y, last_x, last_y);
-              if (dist < min_distance) {
-                min_distance = dist;
-                s_closest = s;
-              }
-            }
-            s_start = s_closest;
-            */
-            s_start = s_approx;
-          }
-          else {
-            s_start = car_s;
-          }
-
-          if (previous_path_x.empty())
+          // Choose reference position based on previous path length
+          if (prev_path_size < 2)
           {
-            num_new_steps = horizon;
+            ref_yaw = car_yaw_rad;
 
-            Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, 0, 0},
-                                                             {s_start + 1, 1.5, 3},
-                                                             num_new_steps * timestep);
+            ref_x = car_x;
+            ref_y = car_y;
 
-            for (int i = 0; i < num_new_steps; ++i) {
-              //double s = s_start + (i+1)*step;
-              double s = EvaluatePolynomialAtValue(s_alpha, timestep * (i+1));
-              double x = x_spline(s) + d_val*dx_spline(s);
-              double y = y_spline(s) + d_val*dy_spline(s);
-              next_x_vals.push_back(x);
-              next_y_vals.push_back(y);
-              next_s_vals.push_back(s);
-
-              if (i == 0 || i == num_new_steps - 1)
-                cout << "Init point: " << s << " "<< x << " " << y << endl;
-              else if (i == 1)
-                cout << "..." <<  endl;
-            }
+            pre_ref_x = ref_x - cos(ref_yaw);
+            pre_ref_y = ref_y - sin(ref_yaw);
           }
-          else {
-            //vector<vector<double>> xy_state = CalculateState(num_prev_path_points-2, previous_path_x, previous_path_y);
-            vector<vector<double>> xy_state = CalculateState(num_reused_path_points, previous_path_x, previous_path_y);
-            vector<double> x_state = xy_state[0];
-            vector<double> y_state = xy_state[1];
-            vector<double> state = xy_state[2];
+          else
+          {
+            ref_x = previous_path_x[prev_path_size-1];
+            ref_y = previous_path_y[prev_path_size-1];
 
-            //double total_speed = sqrt(x_state[1]*x_state[1] + y_state[1]*y_state[1]);
-            //double total_acc = sqrt(x_state[2]*x_state[2] + y_state[2]*y_state[2]);
-            double total_speed = state[1];
-            double total_acc = state[2];
-            double travel_time = num_new_steps * timestep;
-            double step = (target_speed + total_speed) / 2.0 * timestep;
+            pre_ref_x = previous_path_x[prev_path_size-2];
+            pre_ref_y = previous_path_y[prev_path_size-2];
 
-            cout << "target speed: " << target_speed << endl;
-            cout << "state (v, a, T): " << total_speed << " " << total_acc << " " << travel_time << endl;
-            Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, total_speed, 0},
-                                                             {s_start + num_new_steps*step, target_speed, 0}, travel_time);
-
-            for (int i = 0; i < num_new_steps; ++i) {
-              //double s = s_start + (i+1)*step;
-              double s = EvaluatePolynomialAtValue(s_alpha, timestep * (i+1));
-              double x = x_spline(s) + d_val*dx_spline(s);
-              double y = y_spline(s) + d_val*dy_spline(s);
-              next_x_vals.push_back(x);
-              next_y_vals.push_back(y);
-              next_s_vals.push_back(s);
-
-              if (i == 0 || i == num_new_steps - 1)
-                cout << "add s,x,y: " << s << " "<< x << " " << y << endl;
-              else if (i == 1)
-                cout << "..." <<  endl;
-            }
+            ref_yaw = atan2(ref_y-pre_ref_y, ref_x-pre_ref_x);
           }
 
-                   /*
-          vector<double> s_start_state = {s_start, target_speed, car_acc_x};
-          vector<double> s_goal_state = {goal_x, goal_speed_x, goal_acc};
-          */
+          // Push first two points
+          ptsx.push_back(pre_ref_x);
+          ptsx.push_back(ref_x);
+          ptsy.push_back(pre_ref_y);
+          ptsy.push_back(ref_y);
 
-          /*
-          double s = s_start;
-          double dx = dx_spline(s);
-          double dy = dy_spline(s);
-          double x = x_spline(s) + d_val*dx;
-          double y = y_spline(s) + d_val*dy;
-          cout << s << " " << x << " " << y << " " << last_x << " " << last_y << endl;
-          */
-
-
-
-          /*
-
-          if (previous_path_x.size() > 10) {
-            for (size_t i = 0; i < 10; i ++) {
-              next_x_vals.push_back(previous_path_x[i]);
-              next_y_vals.push_back(previous_path_y[i]);
-            }
-
-            for (int i = 0; i < travel_steps - pos_ahead and i < 50; i++) {
-              double x_position = EvaluatePolynomialAtValue(x_ahead_alpha, timestep * i);
-              double y_position = EvaluatePolynomialAtValue(y_ahead_alpha, timestep * i);
-              next_x_vals.push_back(x_position);
-              next_y_vals.push_back(y_position);
-            }
-
+          // Add cartesian coordinates for waypoints ahead
+          double wp_spacing = 30;
+          int num_wp = 3;
+          for (int i = 0; i < num_wp; ++i)
+          {
+            double s = car_s + (i+1)*wp_spacing; //TODO: Improve s
+            double d = 6.0; //TODO: Improve d
+            double wp_x = x_spline(s) + d*dx_spline(s);
+            double wp_y = y_spline(s) + d*dy_spline(s);
+            ptsx.push_back(wp_x);
+            ptsy.push_back(wp_y);
           }
-          else {
-            for (size_t i = 0; i < travel_steps; i++) {
-              double x_position = EvaluatePolynomialAtValue(x_alpha, timestep * i);
-              double y_position = EvaluatePolynomialAtValue(y_alpha, timestep * i);
-              next_x_vals.push_back(x_position);
-              next_y_vals.push_back(y_position);
-            }
+
+          // Transform into ego vehicle coordinates
+          for (int i = 0; i < ptsx.size(); ++i)
+          {
+            double x = ptsx[i] - ref_x;
+            double y = ptsy[i] - ref_y;
+
+            ptsx[i] = cos(0-ref_yaw)*x - sin(0-ref_yaw)*y;
+            ptsy[i] = sin(0-ref_yaw)*x + cos(0-ref_yaw)*y;
           }
-           */
+
+          // Define spline where y is defined by x
+          tk::spline cartesian;
+          cartesian.set_points(ptsx, ptsy);
+
+          // Add previous positions
+          for (int i = 0; i < prev_path_size; ++i)
+          {
+            next_x_vals.push_back(previous_path_x[i]);
+            next_y_vals.push_back(previous_path_y[i]);
+          }
+
+          // Plan 30 meters straight ahead (horizon)
+          double horizon_steps {50};
+          double horizon_x {30};
+          double horizon_y = cartesian(horizon_x);
+          double horizon_distance = distance(0, 0, horizon_x, horizon_y);
+
+          // Start at origin in ego vehicle coordinates
+          double x_future {0};
+          double y_future {0};
+
+          // Add new points (global coordinates
+          double num_steps = horizon_distance/timestep/ref_speed;
+          double step_length_x = horizon_x/num_steps;
+          for (int i = 0; i < horizon_steps - prev_path_size; ++i)
+          {
+            x_future += step_length_x;
+            y_future = cartesian(x_future);
+
+            // Convert to global coordinates
+            double x_global, y_global;
+            x_global = cos(ref_yaw)*x_future - sin(ref_yaw)*y_future;
+            y_global = sin(ref_yaw)*x_future + cos(ref_yaw)*y_future;
+            x_global += ref_x;
+            y_global += ref_y;
+
+            next_x_vals.push_back(x_global);
+            next_y_vals.push_back(y_global);
+          }
+
+
+
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
