@@ -26,11 +26,8 @@ public:
     Helper& operator=(Helper&& other) = default;
     ~Helper() = default;
 
-    // Points sent to simulator
-    vector<double> x_vals;
-    vector<double> y_vals;
-    vector<double> s_vals;
-    vector<double> d_vals;
+    // Reference speed
+    double ref_speed;
 
     // Splines
     tk::spline x;

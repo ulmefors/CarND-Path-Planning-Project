@@ -272,6 +272,7 @@ int main() {
   helper.y = y;
   helper.dx = dx;
   helper.dy = dy;
+  helper.ref_speed = 0;
 
   h.onMessage([&helper, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -293,10 +294,12 @@ int main() {
           // j[1] is the data JSON object
 
           // Constants
-          const double max_speed_mph = 45.0;
-          const double max_speed = max_speed_mph * 0.44704;
-          const double timestep = 0.02; // 0.02 second update
-          const int lane_width = 4; // 4 m lane
+          const double max_speed_mph {48};
+          const double imp_metric_conversion {0.447};
+          const double max_speed = max_speed_mph * imp_metric_conversion;
+          const double timestep {0.02}; // 0.02 second update
+          const double speed_increment {0.4};
+          const int lane_width {4}; // 4 m lane
 
           // Ego vehicle localization data (global coordinates)
           double car_x = j[1]["x"];
@@ -332,12 +335,9 @@ int main() {
           // Number of points in path received from Simulator
           int prev_path_size = previous_path_x.size();
 
-          cout << endl << "* New cycle *" << endl;
-          cout << "Car position (from sim) s: " << car_s << " d: " << car_d << " x: " << car_x << " y: " << car_y << endl;
-
           // Ego vehicle derived state
           double car_yaw_rad = deg2rad(car_yaw);
-          double car_speed = car_speed_mph * 0.44704; // mph to mps
+          double car_speed = car_speed_mph * imp_metric_conversion; // mph to mps
           double car_speed_x = car_speed * cos(car_yaw_rad);
           double car_speed_y = car_speed * sin(car_yaw_rad);
           int ego_lane = (int)car_d / lane_width;
@@ -384,7 +384,16 @@ int main() {
           }
 
           // Max speed
-          double ref_speed = max_speed;
+          double ref_speed = helper.ref_speed;
+          if (ref_speed > (goal_speed - speed_increment))
+          {
+            ref_speed -= speed_increment;
+          }
+          else if (ref_speed < max_speed)
+          {
+            ref_speed += speed_increment;
+          }
+          helper.ref_speed = ref_speed;
 
           // Points used to create smooth spline trajectory ahead from reference position
           vector <double> ptsx, ptsy;
@@ -487,16 +496,8 @@ int main() {
             next_y_vals.push_back(y_global);
           }
 
-
-
-
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
-
-          // Save for next cycle
-          helper.x_vals = next_x_vals;
-          helper.y_vals = next_y_vals;
-          helper.s_vals = next_s_vals;
 
           auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
