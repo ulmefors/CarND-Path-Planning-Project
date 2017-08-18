@@ -298,7 +298,8 @@ int main() {
           const double imp_metric_conversion {0.447};
           const double max_speed = max_speed_mph * imp_metric_conversion;
           const double timestep {0.02}; // 0.02 second update
-          const double speed_increment {0.4};
+          const double speed_increment {0.3};
+          const double lane_correction{0.25};
           const int lane_width {4}; // 4 m lane
 
           // Ego vehicle localization data (global coordinates)
@@ -401,6 +402,7 @@ int main() {
           // Ego vehicle reference position  current position or last position in previous path), and shortly before
           double ref_x, ref_y;
           double pre_ref_x, pre_ref_y;
+          double ref_s;
 
           // Yaw at reference position
           double ref_yaw;
@@ -415,6 +417,8 @@ int main() {
 
             pre_ref_x = ref_x - cos(ref_yaw);
             pre_ref_y = ref_y - sin(ref_yaw);
+
+            ref_s = car_s;
           }
           else
           {
@@ -425,6 +429,8 @@ int main() {
             pre_ref_y = previous_path_y[prev_path_size-2];
 
             ref_yaw = atan2(ref_y-pre_ref_y, ref_x-pre_ref_x);
+
+            ref_s = end_path_s;
           }
 
           // Push first two points
@@ -433,13 +439,15 @@ int main() {
           ptsy.push_back(pre_ref_y);
           ptsy.push_back(ref_y);
 
+
           // Add cartesian coordinates for waypoints ahead
-          double wp_spacing = 30;
+          double wp_spacing {40};
           int num_wp = 3;
           for (int i = 0; i < num_wp; ++i)
           {
-            double s = car_s + (i+1)*wp_spacing; //TODO: Improve s
-            double d = 6.0; //TODO: Improve d
+            double s = ref_s + (i+1)*wp_spacing; //TODO: Improve s
+            double d = ((double)goal_lane+0.5)*(double)lane_width; //TODO: Improve d
+            d+=(1-goal_lane)*lane_correction;
             double wp_x = x_spline(s) + d*dx_spline(s);
             double wp_y = y_spline(s) + d*dy_spline(s);
             ptsx.push_back(wp_x);
