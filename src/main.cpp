@@ -348,7 +348,7 @@ int main() {
           double goal_speed = max_speed; // Default to maximum speed
 
           // Choose lane
-          vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, max_speed, sensor_fusion);
+          vector<double> lane_speeds = GetLaneSpeeds(car_s, ego_lane, max_speed, sensor_fusion);
           cout << "lane speeds: ";
           for (auto ls : lane_speeds)
           {
@@ -441,7 +441,7 @@ int main() {
 
 
           // Add cartesian coordinates for waypoints ahead
-          double wp_spacing {40};
+          double wp_spacing {30};
           int num_wp = 3;
           for (int i = 0; i < num_wp; ++i)
           {

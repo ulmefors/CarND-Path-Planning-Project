@@ -1,6 +1,7 @@
 #include "helper.hpp"
 
-Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal, double time) {
+Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal, double time)
+{
 
   double alpha_0 = start[0];
   double alpha_1 = start[1];
@@ -26,7 +27,8 @@ Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal
   return alpha;
 }
 
-double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value) {
+double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value)
+{
   double sum = 0;
   for (size_t i = 0; i < coeffs.size(); i++) {
     sum += coeffs[i] * pow(value, i);
@@ -34,14 +36,14 @@ double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value) {
   return sum;
 }
 
-vector<double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double target_speed, json vehicles) {
+vector<double> GetLaneSpeeds(double ego_s_pos, int ego_lane, double target_speed, json vehicles)
+{
 
   const double safety_distance_forward = 60.0;
+  const double safety_distance_backward = 10.0;
   const int lane_width = 4;
-
-  const size_t num_lanes = 3;
-  vector<double> lane_speeds;
-  lane_speeds.assign(num_lanes, target_speed * 2);
+  const int num_lanes = 3;
+  vector<double> lane_speeds (num_lanes, target_speed*2);
 
   for (auto vehicle : vehicles) {
     int id = vehicle[0];
@@ -55,8 +57,14 @@ vector<double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double target_s
 
     int car_lane = (int)car_d_pos / lane_width;
 
-    if (car_s_pos < (ego_s_pos + safety_distance_forward) && car_s_pos > ego_s_pos) {
-      lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
+    if (car_s_pos < (ego_s_pos + safety_distance_forward))
+    {
+      double rear_buffer = (car_lane == ego_lane) ? 0.0 : safety_distance_backward;
+
+      if (car_s_pos > (ego_s_pos - rear_buffer))
+      {
+        lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
+      }
     }
   }
 
