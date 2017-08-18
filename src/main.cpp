@@ -177,13 +177,28 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 vector<vector<double>> CalculateState(int pos, json previous_path_x, json previous_path_y)
 {
   double timestep = 0.02;
+
+  // Speeds in first two steps, and corresponding acceleration
+  double car_acc;
+  double car_acc_x;
+  double car_acc_y;
+
   double car_x = previous_path_x[pos];
   double car_y = previous_path_y[pos];
 
-  // Speeds in first two steps, and corresponding acceleration
-  // double car_acc;
-  double car_acc_x;
-  double car_acc_y;
+  double car_x_pre = previous_path_x[pos-1];
+  double car_x_post = previous_path_x[pos+1];
+
+  double car_y_pre = previous_path_y[pos-1];
+  double car_y_post = previous_path_y[pos+1];
+
+  double dist_pre = distance(car_x, car_y, car_x_pre, car_y_pre);
+  double dist_post = distance(car_x, car_y, car_x_post, car_y_post);
+
+  double speed_pre = dist_pre/timestep;
+  double speed_post = dist_post/timestep;
+
+  car_acc = (speed_post-speed_pre)/timestep;
 
   double speed_before_x = (double(previous_path_x[pos]) - double(previous_path_x[pos-1])) / timestep;
   double speed_after_x = (double(previous_path_x[pos+1]) - double(previous_path_x[pos])) / timestep;
@@ -202,7 +217,8 @@ vector<vector<double>> CalculateState(int pos, json previous_path_x, json previo
 
   return {
       {car_x, (speed_before_x + speed_after_x)/2, car_acc_x},
-      {car_y, (speed_before_y + speed_after_y)/2, car_acc_y}
+      {car_y, (speed_before_y + speed_after_y)/2, car_acc_y},
+      {0, (speed_pre + speed_post)*0.5, car_acc} // no position
   };
 }
 
@@ -314,7 +330,8 @@ int main() {
           tk::spline dx_spline = helper.dx;
           tk::spline dy_spline = helper.dy;
 
-          cout << "s: " << car_s << " d: " << car_d << " x: " << car_x << " y: " << car_y << endl;
+          cout << endl << "* New cycle *" << endl;
+          cout << "Car position (from sim) s: " << car_s << " d: " << car_d << " x: " << car_x << " y: " << car_y << endl;
 
           // Ego vehicle derived state
           double car_yaw_rad = deg2rad(car_yaw);
@@ -330,6 +347,12 @@ int main() {
 
           // Choose lane
           vector<double> lane_speeds = GetLaneSpeeds(car_s, car_d, max_speed, sensor_fusion);
+          cout << "lane speeds: ";
+          for (auto ls : lane_speeds)
+          {
+            cout << ls << " ";
+          }
+          cout << endl;
 
           if (lane_speeds[ego_lane] < max_speed) {
             // if current lane speed is limited
@@ -434,37 +457,57 @@ int main() {
           Eigen::VectorXd y_alpha = JerkMinimizeTrajectory(y_start, y_goal, travel_time);
           */
 
-          double target_speed = min(lane_speeds[1], max_speed * 0.9);
-          double step = target_speed * timestep;
+          double target_speed = min(lane_speeds[1], max_speed);
+
           double d_val = 6.0;
-          int horizon = 100;
-          int num_prev_path_points = previous_path_x.size();
+          int horizon = 50;
+          //int num_prev_path_points = previous_path_x.size();
+          int num_reused_path_points = 25;
           double s_start = -1;
           double last_x = -1;
           double last_y = -1;
+          int num_new_steps = horizon - num_reused_path_points;
+          int num_used_steps = horizon - previous_path_x.size();
 
-          int num_new_steps = horizon - num_prev_path_points;
 
           if (!previous_path_x.empty()) {
-            for (int i = 0; i < num_prev_path_points; ++i) {
+
+            cout << "num_reused_path_points: " << num_reused_path_points << endl;
+            cout << "num_new_steps: " << num_new_steps << endl;
+
+            //TODO: num_new_steps way too big. Out of ArrayIndex!
+            for (int i = 0; i < num_reused_path_points; ++i)
+            {
+              if (i == 0 || i == num_reused_path_points - 1)
+              {
+                cout << helper.s_vals[i + num_used_steps] << " " << helper.x_vals[i + num_used_steps]  << " " << helper.y_vals[i + num_used_steps];
+                cout << " " << previous_path_x[i] << " " << previous_path_y[i] << endl;
+              }
+              else if (i == 1)
+                cout << "..." <<  endl;
+            }
+
+            for (int i = 0; i < num_reused_path_points; ++i) {
               // TODO: Confirm this line
-              double s = helper.s_vals[i + num_new_steps];
+              double s = helper.s_vals[i + num_used_steps];
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);
               next_s_vals.push_back(s);
             }
-            last_x = previous_path_x[num_prev_path_points-1];
-            last_y = previous_path_y[num_prev_path_points-1];
+            last_x = next_x_vals[next_x_vals.size()-1];
+            last_y = next_y_vals[next_y_vals.size()-1];
 
             double s_range = 2.0;
             int half_range = 100;
             double min_distance = 1000; // large number
             double s_closest = 0;
-            double s_approx = end_path_s;
+            //double s_approx = end_path_s;
+            double s_approx = next_s_vals[next_s_vals.size()-1];
             //double s_approx = helper.s_vals[num_prev_path_points -1 + num_new_steps];
 
-            cout << "s_approx: " << s_approx << " x(s_approx): " << x_spline(s_approx) + d_val*dx_spline(s_approx) << " x_prev: " << last_x << endl;
+            cout << "x(s_approx): " << x_spline(s_approx) + d_val*dx_spline(s_approx) << " x: " << next_x_vals[next_x_vals.size()-1] << endl;
 
+            /*
             for(int i = 0; i <= 2*half_range; ++i) {
               double s = s_approx + ((double)(i-half_range))*s_range/(double)half_range;
               double x = x_spline(s) + d_val*dx_spline(s);
@@ -476,13 +519,16 @@ int main() {
               }
             }
             s_start = s_closest;
+            */
+            s_start = s_approx;
           }
           else {
-            s_start = car_s - step;
-            cout << "car_s: " << car_s << endl;
+            s_start = car_s;
           }
 
-          if (previous_path_x.empty()) {
+          if (previous_path_x.empty())
+          {
+            num_new_steps = horizon;
 
             Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, 0, 0},
                                                              {s_start + 1, 1.5, 3},
@@ -496,33 +542,45 @@ int main() {
               next_x_vals.push_back(x);
               next_y_vals.push_back(y);
               next_s_vals.push_back(s);
-              cout << "Init point: " << s << " "<< x << " " << y << endl;
+
+              if (i == 0 || i == num_new_steps - 1)
+                cout << "Init point: " << s << " "<< x << " " << y << endl;
+              else if (i == 1)
+                cout << "..." <<  endl;
             }
           }
           else {
-            vector<vector<double>> xy_state = CalculateState(num_prev_path_points-2, previous_path_x, previous_path_y);
+            //vector<vector<double>> xy_state = CalculateState(num_prev_path_points-2, previous_path_x, previous_path_y);
+            vector<vector<double>> xy_state = CalculateState(num_reused_path_points, previous_path_x, previous_path_y);
             vector<double> x_state = xy_state[0];
             vector<double> y_state = xy_state[1];
-            double total_speed = sqrt(x_state[1]*x_state[1] + y_state[1]*y_state[1]);
-            double total_acc = sqrt(x_state[2]*x_state[2] + y_state[2]*y_state[2]);
+            vector<double> state = xy_state[2];
 
-
+            //double total_speed = sqrt(x_state[1]*x_state[1] + y_state[1]*y_state[1]);
+            //double total_acc = sqrt(x_state[2]*x_state[2] + y_state[2]*y_state[2]);
+            double total_speed = state[1];
+            double total_acc = state[2];
             double travel_time = num_new_steps * timestep;
-            cout << "state: " << total_speed << " " << total_acc << " " << travel_time << endl;
-            Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, total_speed, total_acc},
-                                                             {s_start + num_new_steps*step, total_speed, 0}, travel_time);
+            double step = (target_speed + total_speed) / 2.0 * timestep;
+
+            cout << "target speed: " << target_speed << endl;
+            cout << "state (v, a, T): " << total_speed << " " << total_acc << " " << travel_time << endl;
+            Eigen::VectorXd s_alpha = JerkMinimizeTrajectory({s_start, total_speed, 0},
+                                                             {s_start + num_new_steps*step, target_speed, 0}, travel_time);
 
             for (int i = 0; i < num_new_steps; ++i) {
               //double s = s_start + (i+1)*step;
               double s = EvaluatePolynomialAtValue(s_alpha, timestep * (i+1));
-              double dx = dx_spline(s);
-              double dy = dy_spline(s);
-              double x = x_spline(s) + d_val*dx;
-              double y = y_spline(s) + d_val*dy;
+              double x = x_spline(s) + d_val*dx_spline(s);
+              double y = y_spline(s) + d_val*dy_spline(s);
               next_x_vals.push_back(x);
               next_y_vals.push_back(y);
               next_s_vals.push_back(s);
-              cout << "add s,x,y: " << s << " "<< x << " " << y << endl;
+
+              if (i == 0 || i == num_new_steps - 1)
+                cout << "add s,x,y: " << s << " "<< x << " " << y << endl;
+              else if (i == 1)
+                cout << "..." <<  endl;
             }
           }
 
