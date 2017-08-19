@@ -11,9 +11,18 @@
 #include <cmath>
 #include "json.hpp"
 #include "spline.h"
+#include <chrono>
 
 using json = nlohmann::json;
 using namespace std;
+
+struct Plan
+{
+    Plan(int l, double s, bool c) : lane{l}, speed{s}, change{c} {}
+    int lane;
+    double speed;
+    bool change;
+};
 
 class Helper
 {
@@ -34,14 +43,12 @@ public:
     tk::spline y;
     tk::spline dx;
     tk::spline dy;
+
+    vector<double> GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double target_speed, json vehicles);
+
+    Plan GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed);
+
+private:
+    long lane_change_timestamp {0};
+    int lane {-1};
 };
-
-struct Plan
-{
-    int lane;
-    double speed;
-};
-
-vector<double> GetLaneSpeeds(double ego_s_pos, int ego_lane, double target_speed, json vehicles);
-
-Plan GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed);

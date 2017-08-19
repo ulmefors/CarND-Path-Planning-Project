@@ -157,11 +157,11 @@ int main() {
           double car_speed = car_speed_mph * imp_metric_conversion; // mph to mps
           double car_speed_x = car_speed * cos(car_yaw_rad);
           double car_speed_y = car_speed * sin(car_yaw_rad);
-          int ego_lane = (int)car_d / lane_width;
+          int car_lane = (int)car_d / lane_width;
 
           // Get lane plan
-          vector<double> lane_speeds = GetLaneSpeeds(car_s, ego_lane, max_speed, sensor_fusion);
-          Plan plan = GetPlan(lane_speeds, ego_lane, max_speed, car_speed);
+          vector<double> lane_speeds = helper.GetLaneSpeeds(car_s, car_lane, car_speed, max_speed, sensor_fusion);
+          Plan plan = helper.GetPlan(lane_speeds, car_lane, max_speed, car_speed);
           int goal_lane = plan.lane;
           double goal_speed = plan.speed;
 
