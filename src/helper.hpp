@@ -10,13 +10,13 @@
 #include <vector>
 #include <cmath>
 #include "json.hpp"
-#include "Eigen-3.3/Eigen/Dense"
 #include "spline.h"
 
+using json = nlohmann::json;
 using namespace std;
 
-class Helper {
-
+class Helper
+{
 public:
     // Constructors
     Helper() = default;
@@ -26,11 +26,8 @@ public:
     Helper& operator=(Helper&& other) = default;
     ~Helper() = default;
 
-    // Points sent to simulator
-    vector<double> x_vals;
-    vector<double> y_vals;
-    vector<double> s_vals;
-    vector<double> d_vals;
+    // Reference speed
+    double ref_speed {0};
 
     // Splines
     tk::spline x;
@@ -39,11 +36,12 @@ public:
     tk::spline dy;
 };
 
-using namespace std;
-using json = nlohmann::json;
+struct Plan
+{
+    int lane;
+    double speed;
+};
 
-Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal, double time);
+vector<double> GetLaneSpeeds(double ego_s_pos, int ego_lane, double target_speed, json vehicles);
 
-double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value);
-
-vector <double> GetLaneSpeeds(double ego_s_pos, double ego_d_pos, double target_speed, json vehicles);
+Plan GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed);
