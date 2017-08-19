@@ -76,7 +76,7 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  // Wrap around start line in order to fit spline entire lap
+  // Wrap around start/finish line in order to fit spline entire lap
   map_waypoints_s = extend_waypoints(map_waypoints_s);
   map_waypoints_s[0] -= max_s;
   map_waypoints_s[map_waypoints_s.size()-1] += max_s;
@@ -88,6 +88,7 @@ int main() {
   dx.set_points(map_waypoints_s, extend_waypoints(map_waypoints_dx));
   dy.set_points(map_waypoints_s, extend_waypoints(map_waypoints_dy));
 
+  // Store splines in Helper instance
   Helper helper = Helper(x, y, dx, dy);
 
   h.onMessage([&max_s, &helper, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
@@ -116,6 +117,7 @@ int main() {
           const double timestep {0.02}; // 0.02 second update
           const double speed_increment {0.3};
           const double lane_correction{0.25};
+          const int horizon_steps {50}; // Planning horizon
           const int lane_width {4}; // 4 m lane
 
           // Ego vehicle localization data (global coordinates)
@@ -124,7 +126,7 @@ int main() {
           double car_s = j[1]["s"];
           double car_d = j[1]["d"];
           double car_yaw = j[1]["yaw"];
-          double car_speed_mph = j[1]["speed"];
+          double car_speed = j[1]["speed"] * imp_metric_conversion;
 
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
@@ -144,28 +146,17 @@ int main() {
           vector<double> next_s_vals;
           vector<double> next_d_vals;
 
-          tk::spline x_spline = helper.x;
-          tk::spline y_spline = helper.y;
-          tk::spline dx_spline = helper.dx;
-          tk::spline dy_spline = helper.dy;
-
           // Number of points in path received from Simulator
           int prev_path_size = previous_path_x.size();
 
-          // Ego vehicle derived state
-          double car_yaw_rad = deg2rad(car_yaw);
-          double car_speed = car_speed_mph * imp_metric_conversion; // mph to mps
-          double car_speed_x = car_speed * cos(car_yaw_rad);
-          double car_speed_y = car_speed * sin(car_yaw_rad);
-          int car_lane = (int)car_d / lane_width;
-
           // Get lane plan
+          int car_lane = (int)car_d / lane_width;
           vector<double> lane_speeds = helper.GetLaneSpeeds(car_s, car_lane, car_speed, max_speed, sensor_fusion);
           Plan plan = helper.GetPlan(lane_speeds, car_lane, max_speed, car_speed);
           int goal_lane = plan.lane;
           double goal_speed = plan.speed;
 
-          // Max speed
+          // Determine reference speed
           double ref_speed = helper.ref_speed;
           if (ref_speed > (goal_speed - speed_increment))
           {
@@ -191,7 +182,7 @@ int main() {
           // Choose reference position based on previous path length
           if (prev_path_size < 2)
           {
-            ref_yaw = car_yaw_rad;
+            ref_yaw = deg2rad(car_yaw);
 
             ref_x = car_x;
             ref_y = car_y;
@@ -222,16 +213,16 @@ int main() {
 
 
           // Add cartesian coordinates for waypoints ahead
-          double wp_spacing {30};
-          int num_wp = 3;
+          const double wp_spacing {30};
+          const int num_wp = 3;
           for (int i = 0; i < num_wp; ++i)
           {
             double s = ref_s + (i+1)*wp_spacing;
             s = fmod(s, max_s);
             double d = ((double)goal_lane+0.5)*(double)lane_width; // Center of choosen lane
             d+=(1-goal_lane)*lane_correction; // Correction to avoid warning in simulator
-            double wp_x = x_spline(s) + d*dx_spline(s);
-            double wp_y = y_spline(s) + d*dy_spline(s);
+            double wp_x = helper.x(s) + d*helper.dx(s);
+            double wp_y = helper.y(s) + d*helper.dy(s);
             ptsx.push_back(wp_x);
             ptsy.push_back(wp_y);
           }
@@ -257,8 +248,7 @@ int main() {
             next_y_vals.push_back(previous_path_y[i]);
           }
 
-          // Plan 30 meters straight ahead (horizon)
-          double horizon_steps {50};
+          // Plan distance straight ahead (horizon)
           double horizon_x {30};
           double horizon_y = cartesian(horizon_x);
           double horizon_distance = distance(0, 0, horizon_x, horizon_y);
