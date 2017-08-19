@@ -29,6 +29,7 @@ class Helper
 public:
     // Constructors
     Helper() = default;
+    Helper(tk::spline x, tk::spline y, tk::spline dx, tk::spline dy) : x{x}, y{y}, dx{dx}, dy{dy} {}
     Helper(const Helper& other) = default;
     Helper& operator=(const Helper& other) = default;
     Helper(Helper&& other) = default;
@@ -52,3 +53,5 @@ private:
     long lane_change_timestamp {0};
     int lane {-1};
 };
+
+vector<double> extend_waypoints(vector<double>& map_waypoints);

@@ -76,21 +76,21 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
+  // Wrap around start line in order to fit spline entire lap
+  map_waypoints_s = extend_waypoints(map_waypoints_s);
+  map_waypoints_s[0] -= max_s;
+  map_waypoints_s[map_waypoints_s.size()-1] += max_s;
+
   // Create splines
   tk::spline x, y, dx, dy;
-  x.set_points(map_waypoints_s, map_waypoints_x);
-  y.set_points(map_waypoints_s, map_waypoints_y);
-  dx.set_points(map_waypoints_s, map_waypoints_dx);
-  dy.set_points(map_waypoints_s, map_waypoints_dy);
+  x.set_points(map_waypoints_s, extend_waypoints(map_waypoints_x));
+  y.set_points(map_waypoints_s, extend_waypoints(map_waypoints_y));
+  dx.set_points(map_waypoints_s, extend_waypoints(map_waypoints_dx));
+  dy.set_points(map_waypoints_s, extend_waypoints(map_waypoints_dy));
 
-  Helper helper = Helper();
-  helper.x = x;
-  helper.y = y;
-  helper.dx = dx;
-  helper.dy = dy;
-  helper.ref_speed = 0;
+  Helper helper = Helper(x, y, dx, dy);
 
-  h.onMessage([&helper, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&max_s, &helper, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -227,6 +227,7 @@ int main() {
           for (int i = 0; i < num_wp; ++i)
           {
             double s = ref_s + (i+1)*wp_spacing;
+            s = fmod(s, max_s);
             double d = ((double)goal_lane+0.5)*(double)lane_width; // Center of choosen lane
             d+=(1-goal_lane)*lane_correction; // Correction to avoid warning in simulator
             double wp_x = x_spline(s) + d*dx_spline(s);

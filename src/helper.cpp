@@ -3,7 +3,6 @@
 
 vector<double> Helper::GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double target_speed, json vehicles)
 {
-
   const double safety_distance_forward = 50.0;
   const double safety_distance_backward = 10.0;
   const int lane_width = 4;
@@ -89,4 +88,11 @@ Plan Helper::GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed,
   }
 
   return plan;
+}
+
+vector<double> extend_waypoints(vector<double>& map_waypoints)
+{
+  map_waypoints.insert(map_waypoints.begin(), map_waypoints[map_waypoints.size()-1]);
+  map_waypoints.push_back(map_waypoints[1]);
+  return map_waypoints;
 }
