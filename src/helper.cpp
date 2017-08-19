@@ -1,41 +1,5 @@
 #include "helper.hpp"
 
-Eigen::VectorXd JerkMinimizeTrajectory(vector<double> start, vector<double> goal, double time)
-{
-
-  double alpha_0 = start[0];
-  double alpha_1 = start[1];
-  double alpha_2 = start[2] / 2;
-
-  // T matrix
-  Eigen::MatrixXd T = Eigen::MatrixXd(3, 3);
-  T <<  pow(time,3), pow(time,4), pow(time,5),
-        3*pow(time,2), 4*pow(time,3), 5*pow(time,4),
-        6*time, 12*pow(time,2), 20*pow(time,3);
-
-  // S matrix
-  Eigen::VectorXd S = Eigen::VectorXd(3);
-  S <<  goal[0] - (start[0] + start[1]*time + 0.5*start[2]*pow(time,2)),
-        goal[1] - (start[1] + start[2]*time),
-        goal[2] - start[2];
-
-  // Alpha vector
-  Eigen::VectorXd alpha_3_4_5 = T.inverse() * S;
-  Eigen::VectorXd alpha = Eigen::VectorXd(start.size() + alpha_3_4_5.size());
-  alpha << alpha_0, alpha_1, alpha_2, alpha_3_4_5;
-
-  return alpha;
-}
-
-double EvaluatePolynomialAtValue(Eigen::VectorXd coeffs, double value)
-{
-  double sum = 0;
-  for (size_t i = 0; i < coeffs.size(); i++) {
-    sum += coeffs[i] * pow(value, i);
-  }
-  return sum;
-}
-
 vector<double> GetLaneSpeeds(double ego_s_pos, int ego_lane, double target_speed, json vehicles)
 {
 
@@ -69,4 +33,45 @@ vector<double> GetLaneSpeeds(double ego_s_pos, int ego_lane, double target_speed
   }
 
   return lane_speeds;
+}
+
+
+Plan GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed)
+{
+  Plan plan;
+  double goal_speed = max_speed;
+  int goal_lane = ego_lane;
+
+  if (lane_speeds[ego_lane] < max_speed)
+  {
+    // if current lane speed is limited
+    goal_speed = lane_speeds[ego_lane];
+
+    if (ego_lane != 1)
+    {
+      if (lane_speeds[1] > max_speed)
+      {
+        goal_lane = 1;
+        goal_speed = ego_speed;
+      }
+    }
+    else
+    {
+      if (lane_speeds[0] > max_speed)
+      {
+        goal_lane = 0;
+        goal_speed = ego_speed;
+      }
+      else if (lane_speeds[2] > max_speed)
+      {
+        goal_lane = 2;
+        goal_speed = ego_speed;
+      }
+    }
+  }
+
+  plan.lane = goal_lane;
+  plan.speed = goal_speed;
+
+  return plan;
 }

@@ -5,8 +5,6 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
 #include "helper.hpp"
 #include "spline.h"
@@ -40,188 +38,6 @@ double distance(double x1, double y1, double x2, double y2)
 {
 	return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }
-
-/**
- * @param x vehicle position
- * @param y vehicle position
- * @param maps_x waypoint positions
- * @param maps_y waypoint positions
- * @return index closest waypoint
- */
-int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> maps_y)
-{
-
-	double closestLen = 100000; //large number
-	int closestWaypoint = 0;
-
-	for(int i = 0; i < maps_x.size(); i++)
-	{
-		double map_x = maps_x[i];
-		double map_y = maps_y[i];
-		double dist = distance(x, y, map_x, map_y);
-		if(dist < closestLen)
-		{
-			closestLen = dist;
-			closestWaypoint = i;
-		}
-
-	}
-
-	return closestWaypoint;
-
-}
-
-int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
-{
-  assert(maps_x.size() == maps_y.size());
-  int nb_waypoints = maps_x.size();
-
-	int closestWaypoint = ClosestWaypoint(x,y,maps_x,maps_y);
-
-	double map_x = maps_x[closestWaypoint];
-	double map_y = maps_y[closestWaypoint];
-
-	double heading = atan2( (map_y-y),(map_x-x) );
-
-	double angle = abs(theta-heading);
-
-  // Closest waypoint is behind ego vehicle if outside +/- 45°
-	if(angle > pi()/4)
-	{
-		closestWaypoint++;
-	}
-
-  // Return first waypoint if trying to access index out of bounds
-	return closestWaypoint % nb_waypoints;
-
-}
-
-// Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
-{
-	int next_wp = NextWaypoint(x,y, theta, maps_x,maps_y);
-
-	int prev_wp;
-	prev_wp = next_wp-1;
-	if(next_wp == 0)
-	{
-		prev_wp  = maps_x.size()-1;
-	}
-
-	double n_x = maps_x[next_wp]-maps_x[prev_wp];
-	double n_y = maps_y[next_wp]-maps_y[prev_wp];
-	double x_x = x - maps_x[prev_wp];
-	double x_y = y - maps_y[prev_wp];
-
-	// find the projection of x onto n
-	double proj_norm = (x_x*n_x+x_y*n_y)/(n_x*n_x+n_y*n_y);
-	double proj_x = proj_norm*n_x;
-	double proj_y = proj_norm*n_y;
-
-	double frenet_d = distance(x_x,x_y,proj_x,proj_y);
-
-	//see if d value is positive or negative by comparing it to a center point
-
-	double center_x = 1000-maps_x[prev_wp];
-	double center_y = 2000-maps_y[prev_wp];
-	double centerToPos = distance(center_x,center_y,x_x,x_y);
-	double centerToRef = distance(center_x,center_y,proj_x,proj_y);
-
-	if(centerToPos <= centerToRef)
-	{
-		frenet_d *= -1;
-	}
-
-	// calculate s value
-	double frenet_s = 0;
-	for(int i = 0; i < prev_wp; i++)
-	{
-		frenet_s += distance(maps_x[i],maps_y[i],maps_x[i+1],maps_y[i+1]);
-	}
-
-	frenet_s += distance(0,0,proj_x,proj_y);
-
-	return {frenet_s,frenet_d};
-
-}
-
-// Transform from Frenet s,d coordinates to Cartesian x,y
-vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
-{
-	int prev_wp = -1;
-
-	while(s > maps_s[prev_wp+1] && (prev_wp < (int)(maps_s.size()-1) ))
-	{
-		prev_wp++;
-	}
-
-	int wp2 = (prev_wp+1)%maps_x.size();
-
-	double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),(maps_x[wp2]-maps_x[prev_wp]));
-	// the x,y,s along the segment
-	double seg_s = (s-maps_s[prev_wp]);
-
-	double seg_x = maps_x[prev_wp]+seg_s*cos(heading);
-	double seg_y = maps_y[prev_wp]+seg_s*sin(heading);
-
-	double perp_heading = heading-pi()/2;
-
-	double x = seg_x + d*cos(perp_heading);
-	double y = seg_y + d*sin(perp_heading);
-
-	return {x,y};
-
-}
-
-// Calculate acceleration based on series of positions
-vector<vector<double>> CalculateState(int pos, json previous_path_x, json previous_path_y)
-{
-  double timestep = 0.02;
-
-  // Speeds in first two steps, and corresponding acceleration
-  double car_acc;
-  double car_acc_x;
-  double car_acc_y;
-
-  double car_x = previous_path_x[pos];
-  double car_y = previous_path_y[pos];
-
-  double car_x_pre = previous_path_x[pos-1];
-  double car_x_post = previous_path_x[pos+1];
-
-  double car_y_pre = previous_path_y[pos-1];
-  double car_y_post = previous_path_y[pos+1];
-
-  double dist_pre = distance(car_x, car_y, car_x_pre, car_y_pre);
-  double dist_post = distance(car_x, car_y, car_x_post, car_y_post);
-
-  double speed_pre = dist_pre/timestep;
-  double speed_post = dist_post/timestep;
-
-  car_acc = (speed_post-speed_pre)/timestep;
-
-  double speed_before_x = (double(previous_path_x[pos]) - double(previous_path_x[pos-1])) / timestep;
-  double speed_after_x = (double(previous_path_x[pos+1]) - double(previous_path_x[pos])) / timestep;
-  double speed_before_y = (double(previous_path_y[pos]) - double(previous_path_y[pos-1])) / timestep;
-  double speed_after_y = (double(previous_path_y[pos+1]) - double(previous_path_y[pos])) / timestep;
-  car_acc_x = (speed_after_x - speed_before_x)/timestep;
-  car_acc_y = (speed_after_y - speed_before_y)/timestep;
-
-  /*
-  double speed_before = distance(previous_path_x[pos-1], previous_path_y[pos-1],
-                                 previous_path_x[pos], previous_path_y[pos]) / timestep;
-  double speed_after = distance(previous_path_x[pos], previous_path_y[pos],
-                                previous_path_x[pos+1], previous_path_y[pos+1]) / timestep;
-  car_acc = (speed_after - speed_before)/timestep;
-  */
-
-  return {
-      {car_x, (speed_before_x + speed_after_x)/2, car_acc_x},
-      {car_y, (speed_before_y + speed_after_y)/2, car_acc_y},
-      {0, (speed_pre + speed_post)*0.5, car_acc} // no position
-  };
-}
-
 
 int main() {
   uWS::Hub h;
@@ -343,46 +159,11 @@ int main() {
           double car_speed_y = car_speed * sin(car_yaw_rad);
           int ego_lane = (int)car_d / lane_width;
 
-          // Get lane speeds
-          int goal_lane = ego_lane; // Default to current lane
-          double goal_speed = max_speed; // Default to maximum speed
-
-          // Choose lane
+          // Get lane plan
           vector<double> lane_speeds = GetLaneSpeeds(car_s, ego_lane, max_speed, sensor_fusion);
-          cout << "lane speeds: ";
-          for (auto ls : lane_speeds)
-          {
-            cout << ls << " ";
-          }
-          cout << endl;
-
-          if (lane_speeds[ego_lane] < max_speed)
-          {
-            // if current lane speed is limited
-            goal_speed = lane_speeds[ego_lane];
-
-            if (ego_lane != 1)
-            {
-              if (lane_speeds[1] > max_speed)
-              {
-                goal_lane = 1;
-                goal_speed = car_speed;
-              }
-            }
-            else
-            {
-              if (lane_speeds[0] > max_speed)
-              {
-                goal_lane = 0;
-                goal_speed = car_speed;
-              }
-              else if (lane_speeds[2] > max_speed)
-              {
-                goal_lane = 2;
-                goal_speed = car_speed;
-              }
-            }
-          }
+          Plan plan = GetPlan(lane_speeds, ego_lane, max_speed, car_speed);
+          int goal_lane = plan.lane;
+          double goal_speed = plan.speed;
 
           // Max speed
           double ref_speed = helper.ref_speed;
@@ -445,9 +226,9 @@ int main() {
           int num_wp = 3;
           for (int i = 0; i < num_wp; ++i)
           {
-            double s = ref_s + (i+1)*wp_spacing; //TODO: Improve s
-            double d = ((double)goal_lane+0.5)*(double)lane_width; //TODO: Improve d
-            d+=(1-goal_lane)*lane_correction;
+            double s = ref_s + (i+1)*wp_spacing;
+            double d = ((double)goal_lane+0.5)*(double)lane_width; // Center of choosen lane
+            d+=(1-goal_lane)*lane_correction; // Correction to avoid warning in simulator
             double wp_x = x_spline(s) + d*dx_spline(s);
             double wp_y = y_spline(s) + d*dy_spline(s);
             ptsx.push_back(wp_x);
