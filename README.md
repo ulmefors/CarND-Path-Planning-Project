@@ -22,20 +22,33 @@ In order for `s`-values to be always increasing, the extrapolation values are ad
 
 ### Behavior
 Lane speeds for each lane are calculated based on the sensor fusion data received from the simulator.
+The speed of vehicles that are within a defined safety distance from the ego vehicle in each lane will be recorded.
+The slowest speed determines the overall lane speed. 
 ```
+// Vehicle is not far ahead of ego vehicle
 if (car_s < (ego_s + safety_distance_forward))
 {
-  double rear_buffer = (car_lane == ego_lane) ? 0.0 : safety_distance_backward;
+  // Safety distance behind ego only necessary if vehicle not in same lane
+  double rear_buffer = (car_lane == ego_lane) ? 0 : safety_distance_backward;
 
-  bool car_close_to_ego = car_s > (ego_s - rear_buffer);
+  // Vehicle close to ego now or in the future
+  bool car_close_to_ego_now = car_s > (ego_s - rear_buffer);
   bool car_close_to_ego_future = car_s_future > (ego_s_future - rear_buffer);
-  if (car_close_to_ego || car_close_to_ego_future)
+
+  // Limit speed if vehicle is (will be) close to ego
+  if (car_close_to_ego_now || car_close_to_ego_future)
   {
     lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
   }
 }
 ```
 [Helper::GetLaneSpeeds() in helper.cpp](src/helper.cpp)
+
+
+
+
+
+If the current lane is blocked
 
 ### Waypoints
 Waypoints are located in the center of the road with approximately 40 m average spacing. Each waypoint in the list ([data/highway_map.txt](data/highway_map.txt)) contains [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.

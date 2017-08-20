@@ -1,36 +1,60 @@
 #include "helper.hpp"
 
-
+/**
+ * @param ego_s ego vehicle s position
+ * @param ego_lane  ego vehicle lane
+ * @param ego_speed ego vehicle speed
+ * @param target_speed ideal target speed
+ * @param vehicles sensor fusion data of surrounding vehicles
+ * @return speed for each lane (left, center, right)
+ */
 vector<double> Helper::GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double target_speed, json vehicles)
 {
-  const double safety_distance_forward = 50.0;
-  const double safety_distance_backward = 10.0;
-  const int lane_width = 4;
-  const int num_lanes = 3;
+  // Safety distance in front of ego vehicle
+  const double safety_distance_forward {50};
+
+  // Safety distance behind ego vehicle to avoid collision when changing lanes
+  // Not applicable for same lane
+  const double safety_distance_backward {10};
+
+  // Contant number of lanes and lane width
+  const int lane_width {4};
+  const int num_lanes {3};
+
+  // Time to prediction of future vehicle
   double future_time {0.5};
+
+  // Initialize lane speeds as higher than maximum and constrained if vehicles are present
   vector<double> lane_speeds (num_lanes, target_speed*2);
 
-  for (auto vehicle : vehicles) {
-    int id = vehicle[0];
-    double car_x = vehicle[1];
-    double car_y = vehicle[2];
+  // Limit lane speed if a vehicle is within safety margin of ego vehicle
+  for (auto const &vehicle : vehicles)
+  {
     double car_x_dot = vehicle[3];
     double car_y_dot = vehicle[4];
     double car_s = vehicle[5];
     double car_d = vehicle[6];
     double car_speed = sqrt(car_x_dot*car_x_dot + car_y_dot*car_y_dot);
 
+    // Determine vehicle lane
     int car_lane = (int)car_d / lane_width;
+
+    // Determine future predicted position of vehicle and ego
     double car_s_future = car_s + future_time*car_speed;
     double ego_s_future = ego_s + future_time*ego_speed;
 
+    // Vehicle is not far ahead of ego vehicle
     if (car_s < (ego_s + safety_distance_forward))
     {
-      double rear_buffer = (car_lane == ego_lane) ? 0.0 : safety_distance_backward;
+      // Safety distance behind ego only necessary if vehicle not in same lane
+      double rear_buffer = (car_lane == ego_lane) ? 0 : safety_distance_backward;
 
-      bool car_close_to_ego = car_s > (ego_s - rear_buffer);
+      // Vehicle is close to ego now or in the future
+      bool car_close_to_ego_now = car_s > (ego_s - rear_buffer);
       bool car_close_to_ego_future = car_s_future > (ego_s_future - rear_buffer);
-      if (car_close_to_ego || car_close_to_ego_future)
+
+      // Limit speed if vehicle is (will be) close to ego
+      if (car_close_to_ego_now || car_close_to_ego_future)
       {
         lane_speeds[car_lane] = min(car_speed, lane_speeds[car_lane]);
       }
