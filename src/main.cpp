@@ -204,6 +204,13 @@ int main() {
             pre_ref_x = previous_path_x[prev_path_size-2];
             pre_ref_y = previous_path_y[prev_path_size-2];
             ref_yaw = atan2(ref_y-pre_ref_y, ref_x-pre_ref_x);
+
+            // Reuse positions from previous planning
+            for (int i = 0; i < prev_path_size; ++i)
+            {
+              next_x_vals.push_back(previous_path_x[i]);
+              next_y_vals.push_back(previous_path_y[i]);
+            }
           }
 
           // Add first two points
@@ -217,10 +224,15 @@ int main() {
           const double wp_spacing {30};
           for (int i = 0; i < num_wp; ++i)
           {
+            // Frenet s-position of future waypoint and wrap-around start/finish line
             double s = ref_s + (i+1)*wp_spacing;
             s = fmod(s, max_s);
-            double d = ((double)goal_lane+0.5)*(double)lane_width; // Center of choosen lane
-            d += (1-goal_lane)*lane_correction; // Correction to avoid warning in simulator
+
+            // Frenet d-position for center of chosen lane and correction offset for simulator "outside lane" message
+            double d = ((double)goal_lane+0.5)*(double)lane_width;
+            d += (1-goal_lane)*lane_correction;
+
+            // Calculate X-Y cartesian coordinates using s-splines created from waypoints map data
             double wp_x = helper.x(s) + d*helper.dx(s);
             double wp_y = helper.y(s) + d*helper.dy(s);
             ptsx.push_back(wp_x);
@@ -230,9 +242,11 @@ int main() {
           // Transform into ego vehicle coordinates
           for (int i = 0; i < ptsx.size(); ++i)
           {
+            // Translation
             double x = ptsx[i] - ref_x;
             double y = ptsy[i] - ref_y;
 
+            // Rotation
             ptsx[i] = cos(0-ref_yaw)*x - sin(0-ref_yaw)*y;
             ptsy[i] = sin(0-ref_yaw)*x + cos(0-ref_yaw)*y;
           }
@@ -240,13 +254,6 @@ int main() {
           // Define spline where y is defined by x
           tk::spline cartesian;
           cartesian.set_points(ptsx, ptsy);
-
-          // Add previous positions
-          for (int i = 0; i < prev_path_size; ++i)
-          {
-            next_x_vals.push_back(previous_path_x[i]);
-            next_y_vals.push_back(previous_path_y[i]);
-          }
 
           // Consider distance straight ahead (horizon)
           double horizon_x {30};
@@ -257,21 +264,27 @@ int main() {
           double x_future {0};
           double y_future {0};
 
-          // Add new points (global coordinates
+          // Add new points (global coordinates)
           double num_steps = horizon_distance/timestep/ref_speed;
           double step_length_x = horizon_x/num_steps;
           for (int i = 0; i < horizon_steps - prev_path_size; ++i)
           {
+            // Determine next position in ego vehicle coordinates
             x_future += step_length_x;
             y_future = cartesian(x_future);
 
-            // Convert to global coordinates
+            // Convert next position to global coordinates
             double x_global, y_global;
+
+            // Rotation
             x_global = cos(ref_yaw)*x_future - sin(ref_yaw)*y_future;
             y_global = sin(ref_yaw)*x_future + cos(ref_yaw)*y_future;
+
+            // Translation
             x_global += ref_x;
             y_global += ref_y;
 
+            // Add position to be sent to simulator
             next_x_vals.push_back(x_global);
             next_y_vals.push_back(y_global);
           }
