@@ -1,11 +1,9 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
 
-
 ## Design
 Waypoints throughout the entire lap are connected using splines. Values `x, y, dx, dy` can thus be found for any value of `s`.
 In order to achieve smooth driving path (avoid erroneous linear extrapolation) at the start/finish line the spline is extended by one point in each direction.
-
 ```
 // helper.cpp extend_waypoints  
 map_waypoints.insert(map_waypoints.begin(), map_waypoints[map_waypoints.size()-1]);
@@ -120,11 +118,11 @@ The ego vehicle reference speed is determined by speed limit, other cars, and eg
 // Speed up if road is free and speed limit is not reached
 if (ref_speed > (goal_speed - speed_increment))
 {
-ref_speed -= speed_increment;
+  ref_speed -= speed_increment;
 }
 else if (ref_speed < max_speed)
 {
-ref_speed += speed_increment;
+  ref_speed += speed_increment;
 }
 ``` 
 [main() in main.cpp](src/main.cpp)
@@ -267,10 +265,10 @@ for (int i = 0; i < horizon_steps - prev_path_size; ++i)
   next_y_vals.push_back(y_global);
 }
 ```
-
 [main() in main.cpp](src/main.cpp)
 
-
+#### Example lane change
+![Lane change](img/lanechange.jpg)
 
 ### Waypoints
 Waypoints are located in the center of the road with approximately 40 m average spacing. Each waypoint in the list ([data/highway_map.txt](data/highway_map.txt)) contains [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
