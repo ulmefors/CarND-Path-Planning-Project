@@ -177,7 +177,7 @@ ptsy.push_back(ref_y);
 ```
 [main() in main.cpp](src/main.cpp)
 
-#### Prediction of future positions
+#### Predict future positions
 The number and spacing of future waypoints ahead of the reference positions are defined in `num_wp` and `wp_spacing`.
 ```
 for (int i = 0; i < num_wp; ++i)
@@ -199,7 +199,7 @@ for (int i = 0; i < num_wp; ++i)
 ```
 [main() in main.cpp](src/main.cpp)
 
-#### Conversion to vehicle coordinates
+#### Convert to vehicle coordinates
 The points stored in `ptsx` and `ptsy` are converted into ego vehicle coordinates where the reference position is the origin (0, 0) with zero heading (along the x-axis).
 ```
 // Transform into ego vehicle coordinates
@@ -215,6 +215,7 @@ for (int i = 0; i < ptsx.size(); ++i)
 }
 ```
 
+#### Define spline trajectory for limited horizon
 Since points are in ego vehicle coordinates and the scope is local, x-position is always increasing which is a requirement for the spline library.
 ```
 // Define spline where y is defined by x
@@ -237,6 +238,7 @@ double num_steps = horizon_distance/timestep/ref_speed;
 double step_length_x = horizon_x/num_steps;
 ```
 
+#### Calculate new global positions and send to simulator
 Global points are to be added to `next_x_vals, next_y_vals` for use in the simulator.
 The following point x-value is linearly added together with its corresponding y-value.
 The position is converted into global coordinates and added to list of points destined for the simulator.
@@ -267,7 +269,7 @@ for (int i = 0; i < horizon_steps - prev_path_size; ++i)
 ```
 [main() in main.cpp](src/main.cpp)
 
-#### Example lane change
+### Lane change example
 ![Lane change](img/lanechange.jpg)
 
 ### Waypoints
