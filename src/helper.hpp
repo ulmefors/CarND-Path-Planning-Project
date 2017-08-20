@@ -16,9 +16,9 @@
 using json = nlohmann::json;
 using namespace std;
 
-struct Plan
+struct LanePlan
 {
-    Plan(int l, double s, bool c) : lane{l}, speed{s}, change{c} {}
+    LanePlan(int l, double s, bool c) : lane{l}, speed{s}, change{c} {}
     int lane;
     double speed;
     bool change;
@@ -45,9 +45,9 @@ public:
     tk::spline dx;
     tk::spline dy;
 
-    vector<double> GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double target_speed, json vehicles);
+    vector<double> GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double max_speed, json vehicles);
 
-    Plan GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed);
+    LanePlan GetLanePlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed);
 
 private:
     long lane_change_timestamp {0};

@@ -1,14 +1,16 @@
 #include "helper.hpp"
 
 /**
+ * Calculate travel speed of each lane based on ego vehicle state and sensor fusion data of surrounding vehicles
+ *
  * @param ego_s ego vehicle s position
  * @param ego_lane  ego vehicle lane
  * @param ego_speed ego vehicle speed
- * @param target_speed ideal target speed
+ * @param max_speed maximum speed during unconstrained travel
  * @param vehicles sensor fusion data of surrounding vehicles
  * @return speed for each lane (left, center, right)
  */
-vector<double> Helper::GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double target_speed, json vehicles)
+vector<double> Helper::GetLaneSpeeds(double ego_s, int ego_lane, double ego_speed, double max_speed, json vehicles)
 {
   // Safety distance in front of ego vehicle
   const double safety_distance_forward {50};
@@ -25,7 +27,7 @@ vector<double> Helper::GetLaneSpeeds(double ego_s, int ego_lane, double ego_spee
   double future_time {0.5};
 
   // Initialize lane speeds as higher than maximum and constrained if vehicles are present
-  vector<double> lane_speeds (num_lanes, target_speed*2);
+  vector<double> lane_speeds (num_lanes, max_speed*2);
 
   // Limit lane speed if a vehicle is within safety margin of ego vehicle
   for (auto const &vehicle : vehicles)
@@ -64,17 +66,29 @@ vector<double> Helper::GetLaneSpeeds(double ego_s, int ego_lane, double ego_spee
   return lane_speeds;
 }
 
-
-Plan Helper::GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed)
+/**
+ * Determine whether to stay in current lane or change to adjacent lane
+ *
+ * @param lane_speeds travel speed of each lane
+ * @param ego_lane current lane of ego vehicle
+ * @param max_speed maximum speed for unconstrained travel
+ * @param ego_speed ego vehicle current speed
+ * @return optimal lane and speed
+ */
+LanePlan Helper::GetLanePlan(vector<double> lane_speeds, int ego_lane, double max_speed, double ego_speed)
 {
-  // Stand by lane change decision to avoid swerving
-  int lane_change_inertia {6}; // Minimum number of seconds between lane changes
-  long seconds = std::chrono::system_clock::now().time_since_epoch().count() / 1000/1000/1000;
+  // Lane change decision should be firm
+  // If two adjacent lanes are similar in suitability the ego vehicle will risk swerving between the lanes
+
+  // New lane change decision cannot be taken within defined time window
+  int lane_change_inertia {6};
+
+  // Determine whether lane change has occured recently
+  long seconds = std::chrono::system_clock::now().time_since_epoch().count()/1000/1000/1000;
   bool allow_lane_change = (seconds - this->lane_change_timestamp) > lane_change_inertia;
-  if (!allow_lane_change)
-  {
-    return {this->lane, ego_speed, false};
-  }
+
+  // Stay in current lane at current speed if lane change is not allowed
+  if (!allow_lane_change) return {this->lane, ego_speed, false};
 
   // Lane numbers
   int left_lane {0};
@@ -82,7 +96,7 @@ Plan Helper::GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed,
   int right_lane {2};
 
   // Default to staying in same lane with max speed
-  Plan plan = Plan(ego_lane, max_speed, false);
+  LanePlan plan = LanePlan(ego_lane, max_speed, false);
 
   // Current lane speed is limited
   if (lane_speeds[ego_lane] < max_speed)
@@ -93,14 +107,14 @@ Plan Helper::GetPlan(vector<double> lane_speeds, int ego_lane, double max_speed,
     if (ego_lane == center_lane)
     {
       if (lane_speeds[left_lane] > max_speed) // Free speed in left lane
-        plan = Plan(left_lane, ego_speed, true);
+        plan = LanePlan(left_lane, ego_speed, true);
       else if (lane_speeds[right_lane] > max_speed) // Free speed in right lane
-        plan = Plan(right_lane, ego_speed, true);
+        plan = LanePlan(right_lane, ego_speed, true);
     }
     else
     {
       if (lane_speeds[center_lane] > max_speed) // Free speed in center lane
-        plan = Plan(center_lane, ego_speed, true);
+        plan = LanePlan(center_lane, ego_speed, true);
     }
   }
 

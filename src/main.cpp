@@ -152,7 +152,7 @@ int main() {
           // Get lane plan
           int car_lane = (int)car_d / lane_width;
           vector<double> lane_speeds = helper.GetLaneSpeeds(car_s, car_lane, car_speed, max_speed, sensor_fusion);
-          Plan plan = helper.GetPlan(lane_speeds, car_lane, max_speed, car_speed);
+          LanePlan plan = helper.GetLanePlan(lane_speeds, car_lane, max_speed, car_speed);
           int goal_lane = plan.lane;
           double goal_speed = plan.speed;
 
@@ -248,7 +248,7 @@ int main() {
             next_y_vals.push_back(previous_path_y[i]);
           }
 
-          // Plan distance straight ahead (horizon)
+          // Consider distance straight ahead (horizon)
           double horizon_x {30};
           double horizon_y = cartesian(horizon_x);
           double horizon_distance = distance(0, 0, horizon_x, horizon_y);
