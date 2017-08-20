@@ -98,7 +98,7 @@ LanePlan Helper::GetLanePlan(vector<double> lane_speeds, int ego_lane, double ma
   // Default to staying in same lane with max speed
   LanePlan plan = LanePlan(ego_lane, max_speed, false);
 
-  // Current lane speed is limited
+  // If current lane speed is limited
   if (lane_speeds[ego_lane] < max_speed)
   {
     // Slow down to follow car ahead
@@ -106,19 +106,21 @@ LanePlan Helper::GetLanePlan(vector<double> lane_speeds, int ego_lane, double ma
 
     if (ego_lane == center_lane)
     {
-      if (lane_speeds[left_lane] > max_speed) // Free speed in left lane
+      // Change to left or right lane if free
+      if (lane_speeds[left_lane] > max_speed)
         plan = LanePlan(left_lane, ego_speed, true);
-      else if (lane_speeds[right_lane] > max_speed) // Free speed in right lane
+      else if (lane_speeds[right_lane] > max_speed)
         plan = LanePlan(right_lane, ego_speed, true);
     }
     else
     {
-      if (lane_speeds[center_lane] > max_speed) // Free speed in center lane
+      // Change to center lane if free
+      if (lane_speeds[center_lane] > max_speed)
         plan = LanePlan(center_lane, ego_speed, true);
     }
   }
 
-  // Update last lane change
+  // Save lane number and time of change to avoid rapid lane change and swerving
   if (plan.change)
   {
     this->lane_change_timestamp = seconds;
@@ -128,6 +130,12 @@ LanePlan Helper::GetLanePlan(vector<double> lane_speeds, int ego_lane, double ma
   return plan;
 }
 
+/**
+ * Extend list of waypoints before start and after finish to avoid driving along spline linear extrapolation
+ *
+ * @param map_waypoints waypoints from start to finish
+ * @return waypoints extended by one point in each direction
+ */
 vector<double> extend_waypoints(vector<double>& map_waypoints)
 {
   map_waypoints.insert(map_waypoints.begin(), map_waypoints[map_waypoints.size()-1]);

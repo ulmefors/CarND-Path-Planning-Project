@@ -113,11 +113,11 @@ int main() {
           // Constants
           const double max_speed_mph {48};
           const double imp_metric_conversion {0.447};
-          const double max_speed = max_speed_mph * imp_metric_conversion;
+          const double max_speed = max_speed_mph*imp_metric_conversion;
           const double timestep {0.02}; // 0.02 second update
           const double speed_increment {0.3};
           const double lane_correction{0.25};
-          const int horizon_steps {50}; // Planning horizon
+          const int horizon_steps {50}; // Planning horizon: Number of points to predict and send to simulator
           const int lane_width {4}; // 4 m lane
 
           // Ego vehicle localization data (global coordinates)
@@ -126,7 +126,8 @@ int main() {
           double car_s = j[1]["s"];
           double car_d = j[1]["d"];
           double car_yaw = j[1]["yaw"];
-          double car_speed = j[1]["speed"] * imp_metric_conversion;
+          double car_speed = j[1]["speed"];
+          car_speed*=imp_metric_conversion;
 
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];

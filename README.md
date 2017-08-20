@@ -7,20 +7,30 @@ Waypoints throughout the entire lap are connected using splines. Values `x, y, d
 In order to achieve smooth driving path (avoid erroneous linear extrapolation) at the start/finish line the spline is extended by one point in each direction.
 
 ```
-  // helper.cpp extend_waypoints  
-  map_waypoints.insert(map_waypoints.begin(), map_waypoints[map_waypoints.size()-1]);
-  map_waypoints.push_back(map_waypoints[1]);
+// helper.cpp extend_waypoints  
+map_waypoints.insert(map_waypoints.begin(), map_waypoints[map_waypoints.size()-1]);
+map_waypoints.push_back(map_waypoints[1]);
 ```
 [extend_waypoints() in helper.cpp](src/helper.cpp)
 
 In order for `s`-values to be always increasing, the extrapolation values are adjusted with the length of the track.
 ```
-  map_waypoints_s[0] -= max_s;
-  map_waypoints_s[map_waypoints_s.size()-1] += max_s;
+map_waypoints_s[0] -= max_s;
+map_waypoints_s[map_waypoints_s.size()-1] += max_s;
 ```
 [main() in main.cpp](src/main.cpp)
 
 ### Behavior
+Optimal lane is decided based on ego vehicle state and the sensor fusion data of surrounding vehicles. 
+```
+int car_lane = (int)car_d / lane_width;
+vector<double> lane_speeds = helper.GetLaneSpeeds(car_s, car_lane, car_speed, max_speed, sensor_fusion);
+LanePlan plan = helper.GetLanePlan(lane_speeds, car_lane, max_speed, car_speed);
+int goal_lane = plan.lane;
+double goal_speed = plan.speed;
+```
+[main() in main.cpp](src/main.cpp)
+
 Lane speeds for each lane are calculated based on the sensor fusion data received from the simulator.
 The speed of vehicles that are within a defined safety distance from the ego vehicle in each lane will be recorded.
 The slowest speed determines the overall lane speed. 
@@ -45,10 +55,64 @@ if (car_s < (ego_s + safety_distance_forward))
 [Helper::GetLaneSpeeds() in helper.cpp](src/helper.cpp)
 
 
+Knowledge of lane speeds will allow for decision of preferred lane.
+Since two adjacent lanes can be similar in suitability, the vehicle can make conflicting decisions in two analyses that are very close in time.
+For that reason, inertia is introduced in the lane changing algorithm which enforces a minimum time between lane changes.
+This minimum time guarantees that an initiated lane change will be completed and thereby eliminates swerving between two lanes.  
+
+```
+// New lane change decision cannot be taken within defined time window
+int lane_change_inertia {6};
+
+// Determine whether lane change has occured recently
+long seconds = std::chrono::system_clock::now().time_since_epoch().count()/1000/1000/1000;
+bool allow_lane_change = (seconds - this->lane_change_timestamp) > lane_change_inertia;
+
+// Stay in current lane at current speed if lane change is not allowed
+if (!allow_lane_change) return {this->lane, ego_speed, false};
+```
+[Helper::GetLanePlan() in helper.cpp](src/helper.cpp)
+
+If the ego vehicle current lane speed is limited by traffic, adjacent lanes will be checked for higher available speeds.
+
+```
+// If current lane speed is limited
+if (lane_speeds[ego_lane] < max_speed)
+{
+  // Slow down to follow car ahead
+  plan.speed = lane_speeds[ego_lane];
+
+  if (ego_lane == center_lane)
+  {
+    // Change to left or right lane if free
+    if (lane_speeds[left_lane] > max_speed)
+      plan = LanePlan(left_lane, ego_speed, true);
+    else if (lane_speeds[right_lane] > max_speed)
+      plan = LanePlan(right_lane, ego_speed, true);
+  }
+  else
+  {
+    // Change to center lane if free
+    if (lane_speeds[center_lane] > max_speed)
+      plan = LanePlan(center_lane, ego_speed, true);
+  }
+}
+```
+
+If lane change occurs, the lane number and time of decision is recorded so that next lane change cannot happen until enough time has elapsed.
+```
+// Save lane number and time of change to avoid rapid lane change and swerving
+if (plan.change)
+{
+  this->lane_change_timestamp = seconds;
+  this->lane = plan.lane;
+}
+```
+[Helper::GetLanePlan() in helper.cpp](src/helper.cpp)
 
 
+### Trajectory
 
-If the current lane is blocked
 
 ### Waypoints
 Waypoints are located in the center of the road with approximately 40 m average spacing. Each waypoint in the list ([data/highway_map.txt](data/highway_map.txt)) contains [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
