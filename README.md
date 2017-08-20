@@ -113,6 +113,64 @@ if (plan.change)
 
 ### Trajectory
 
+The ego vehicle reference speed is determined by speed limit, other cars, and ego vehicle current speed.
+```
+// Slow down if approaching vehicle in front
+// Speed up if road is free and speed limit is not reached
+if (ref_speed > (goal_speed - speed_increment))
+{
+ref_speed -= speed_increment;
+}
+else if (ref_speed < max_speed)
+{
+ref_speed += speed_increment;
+}
+``` 
+[main() in main.cpp](src/main.cpp)
+
+
+The trajectory is based on a spline that starts from a reference position.
+This position is typically the final position given to (and returned from) the simulator.
+If no previous path exists (typically when starting from rest), the reference position will be the ego vehicle current position.
+One previous position will also be created in order to avoid discontinuities from the spline linear extrapolation.
+```
+// Choose reference position based on previous path length
+int prev_path_size = previous_path_x.size();
+if (prev_path_size < 2)
+{
+// Reference position is current position
+ref_x = car_x;
+ref_y = car_y;
+ref_s = car_s;
+
+// Prior position is artificially created based on current ego heading
+ref_yaw = deg2rad(car_yaw);
+pre_ref_x = ref_x - cos(ref_yaw);
+pre_ref_y = ref_y - sin(ref_yaw);
+}
+else
+{
+// Reference position is last position from previous planning
+ref_x = previous_path_x[prev_path_size-1];
+ref_y = previous_path_y[prev_path_size-1];
+ref_s = end_path_s;
+
+// Prior position is penultimate position from previous planning
+pre_ref_x = previous_path_x[prev_path_size-2];
+pre_ref_y = previous_path_y[prev_path_size-2];
+ref_yaw = atan2(ref_y-pre_ref_y, ref_x-pre_ref_x);
+}
+```
+[main() in main.cpp](src/main.cpp)
+
+The reference position and prior position are saved for use in spline.
+```
+// Add first two points
+ptsx.push_back(pre_ref_x);
+ptsx.push_back(ref_x);
+ptsy.push_back(pre_ref_y);
+ptsy.push_back(ref_y);
+```
 
 ### Waypoints
 Waypoints are located in the center of the road with approximately 40 m average spacing. Each waypoint in the list ([data/highway_map.txt](data/highway_map.txt)) contains [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
@@ -123,9 +181,8 @@ The highway's waypoints loop around so the frenet s value, distance along the ro
 ### Simulator
 The Term3 Simulator can be downloaded from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
 
+### Project
 In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 50 m/s^3.
-
-#### The map of the highway is in data/highway_map.txt
 
 ## Basic Build Instructions
 

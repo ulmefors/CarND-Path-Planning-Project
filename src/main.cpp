@@ -147,9 +147,6 @@ int main() {
           vector<double> next_s_vals;
           vector<double> next_d_vals;
 
-          // Number of points in path received from Simulator
-          int prev_path_size = previous_path_x.size();
-
           // Get lane plan
           int car_lane = (int)car_d / lane_width;
           vector<double> lane_speeds = helper.GetLaneSpeeds(car_s, car_lane, car_speed, max_speed, sensor_fusion);
@@ -159,7 +156,10 @@ int main() {
 
           // Determine reference speed
           double ref_speed = helper.ref_speed;
-          if (ref_speed > (goal_speed - speed_increment))
+
+          // Slow down if approaching vehicle in front
+          // Speed up if road is open and speed limit is not reached
+          if (ref_speed > goal_speed - speed_increment)
           {
             ref_speed -= speed_increment;
           }
@@ -172,56 +172,55 @@ int main() {
           // Points used to create smooth spline trajectory ahead from reference position
           vector <double> ptsx, ptsy;
 
-          // Ego vehicle reference position  current position or last position in previous path), and shortly before
-          double ref_x, ref_y;
+          // Ego vehicle reference position (current position or last position in previous path), and shortly before
+          double ref_x, ref_y, ref_s;
           double pre_ref_x, pre_ref_y;
-          double ref_s;
 
           // Yaw at reference position
           double ref_yaw;
 
           // Choose reference position based on previous path length
+          int prev_path_size = previous_path_x.size();
           if (prev_path_size < 2)
           {
-            ref_yaw = deg2rad(car_yaw);
-
+            // Reference position is current position
             ref_x = car_x;
             ref_y = car_y;
+            ref_s = car_s;
 
+            // Prior position is artificially created based on current ego heading
+            ref_yaw = deg2rad(car_yaw);
             pre_ref_x = ref_x - cos(ref_yaw);
             pre_ref_y = ref_y - sin(ref_yaw);
-
-            ref_s = car_s;
           }
           else
           {
+            // Reference position is last position from previous planning
             ref_x = previous_path_x[prev_path_size-1];
             ref_y = previous_path_y[prev_path_size-1];
+            ref_s = end_path_s;
 
+            // Prior position is penultimate position from previous planning
             pre_ref_x = previous_path_x[prev_path_size-2];
             pre_ref_y = previous_path_y[prev_path_size-2];
-
             ref_yaw = atan2(ref_y-pre_ref_y, ref_x-pre_ref_x);
-
-            ref_s = end_path_s;
           }
 
-          // Push first two points
+          // Add first two points
           ptsx.push_back(pre_ref_x);
           ptsx.push_back(ref_x);
           ptsy.push_back(pre_ref_y);
           ptsy.push_back(ref_y);
 
-
           // Add cartesian coordinates for waypoints ahead
+          const int num_wp {3};
           const double wp_spacing {30};
-          const int num_wp = 3;
           for (int i = 0; i < num_wp; ++i)
           {
             double s = ref_s + (i+1)*wp_spacing;
             s = fmod(s, max_s);
             double d = ((double)goal_lane+0.5)*(double)lane_width; // Center of choosen lane
-            d+=(1-goal_lane)*lane_correction; // Correction to avoid warning in simulator
+            d += (1-goal_lane)*lane_correction; // Correction to avoid warning in simulator
             double wp_x = helper.x(s) + d*helper.dx(s);
             double wp_y = helper.y(s) + d*helper.dy(s);
             ptsx.push_back(wp_x);
